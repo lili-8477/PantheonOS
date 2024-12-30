@@ -17,6 +17,11 @@ class AgentResponse(BaseModel):
     context_variables: dict
 
 
+class AgentAnswer(BaseModel):
+    content: str | BaseModel
+    details: AgentResponse
+
+
 class Agent:
     def __init__(
         self,
@@ -140,13 +145,44 @@ class Agent:
                 return chunk
 
     async def run(
-            self, messages: List,
+            self, msg: List | str | BaseModel | AgentAnswer,
             response_format: Optional[BaseModel] = None,
             context_variables: Optional[dict] = None,
-            ) -> AgentResponse:
+            process_chunk: Optional[Callable] = None,
+            ) -> AgentAnswer:
+        assert isinstance(msg, (list, str, BaseModel, AgentAnswer)), \
+            "Message must be a list, string, BaseModel or AgentAnswer"
+        if isinstance(msg, AgentAnswer):
+            # For acceping the result of previous run or other agent
+            msg = msg.content
+
+        # Convert message to the openai message format
+        if isinstance(msg, BaseModel):
+            messages = [{"role": "user", "content": msg.model_dump_json()}]
+        elif isinstance(msg, str):
+            messages = [{"role": "user", "content": msg}]
+        elif isinstance(msg, list):
+            new_messages = []
+            for m in msg:
+                if isinstance(m, BaseModel):
+                    new_messages.append(
+                        {"role": "user", "content": m.model_dump_json()})
+                elif isinstance(m, str):
+                    new_messages.append({"role": "user", "content": m})
+                else:
+                    assert isinstance(m, dict), \
+                        "Message must be a string, BaseModel or dict"
+                    new_messages.append(m)
+            messages = new_messages
         stream = self.get_stream(
             messages=messages,
             response_format=response_format,
             context_variables=context_variables,
         )
-        return await self.run_stream(stream)
+        details = await self.run_stream(stream, process_chunk)
+        final_msg = details.messages[-1]
+        if response_format:
+            content = final_msg.get("parsed")
+        else:
+            content = final_msg.get("content")
+        return AgentAnswer(content=content, details=details)
