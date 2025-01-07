@@ -2,25 +2,17 @@ import copy
 import json
 import inspect
 from typing import Optional, List, Callable, Union
+from uuid import uuid4
 
 from funcdesc.parse import parse_func
 from pydantic import BaseModel
 from litellm import acompletion, stream_chunk_builder
 
-from .utils.misc import desc_to_openai_function
+from ..utils.misc import desc_to_openai_function
+from ..types import AgentResponse, ResponseDetails, AgentInput
 
 
 __CTX_VARS_NAME__ = "context_variables"
-
-
-class AgentResponse(BaseModel):
-    messages: List[dict]
-    context_variables: dict
-
-
-class AgentAnswer(BaseModel):
-    content: str | BaseModel
-    details: AgentResponse
 
 
 class Agent:
@@ -32,6 +24,7 @@ class Agent:
         functions: Optional[List[Callable]] = None,
         response_format: Optional[BaseModel] = None,
     ):
+        self.id = uuid4()
         self.name = name
         self.instructions = instructions
         self.model = model
@@ -84,13 +77,13 @@ class Agent:
 
     async def run_stream(
         self,
-        messages: List,
+        messages: List[dict],
         process_chunk: Optional[Callable] = None,
         max_turns: Union[int, float] = float("inf"),
         context_variables: Optional[dict] = None,
         response_format: Optional[BaseModel] = None,
     ):
-        response_format = self.response_format or response_format
+        response_format = response_format or self.response_format
         history = copy.deepcopy(messages)
         history.insert(0, {"role": "system", "content": self.instructions})
         init_len = len(history)
@@ -137,21 +130,21 @@ class Agent:
             )
             history.extend(tool_messages)
 
-        return AgentResponse(
+        return ResponseDetails(
             messages=history[init_len:],
             context_variables=context_variables,
         )
 
     async def run(
-            self, msg: List | str | BaseModel | AgentAnswer,
+            self, msg: AgentInput,
             response_format: Optional[BaseModel] = None,
             context_variables: Optional[dict] = None,
             process_chunk: Optional[Callable] = None,
-            ) -> AgentAnswer:
-        assert isinstance(msg, (list, str, BaseModel, AgentAnswer)), \
-            "Message must be a list, string, BaseModel or AgentAnswer"
-        response_format = self.response_format or response_format
-        if isinstance(msg, AgentAnswer):
+            ) -> AgentResponse:
+        assert isinstance(msg, (list, str, BaseModel, AgentResponse)), \
+            "Message must be a list, string, BaseModel or AgentResponse"
+        response_format = response_format or self.response_format
+        if isinstance(msg, AgentResponse):
             # For acceping the result of previous run or other agent
             msg = msg.content
 
@@ -184,4 +177,8 @@ class Agent:
             content = final_msg.get("parsed")
         else:
             content = final_msg.get("content")
-        return AgentAnswer(content=content, details=details)
+        return AgentResponse(
+            agent_name=self.name,
+            content=content,
+            details=details,
+        )
