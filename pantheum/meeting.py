@@ -7,7 +7,6 @@ import datetime
 from pydantic import BaseModel
 
 from .agent import Agent
-from .types import Task
 
 
 class Record(BaseModel):
@@ -103,21 +102,32 @@ class AgentRunner:
             except asyncio.TimeoutError:
                 continue
             if isinstance(event, Record):
-                prompt = self.meeting.record_to_prompt(event, self.agent.name)
+                prompt = self.meeting.record_to_prompt(event, self.agent)
                 self.run_start_time = time.time()
-                resp = await self.agent.run(
-                    prompt,
-                    response_format=Message,
-                    process_step_message=self.process_step_message,
-                    process_chunk=self.process_chunk,
-                )
-                record = message_to_record(resp.content, self.agent.name)
+                if self.agent.message_to is None:
+                    resp = await self.agent.run(
+                        prompt,
+                        response_format=Message,
+                        process_step_message=self.process_step_message,
+                        process_chunk=self.process_chunk,
+                    )
+                    record = message_to_record(resp.content, self.agent.name)
+                else:
+                    resp = await self.agent.run(
+                        prompt,
+                        process_step_message=self.process_step_message,
+                        process_chunk=self.process_chunk,
+                    )
+                    record = message_to_record(
+                        Message(content=resp.content, targets=self.agent.message_to),
+                        self.agent.name,
+                    )
                 if record.content:
                     self.meeting.public_queue.put_nowait(record)
                 self.run_start_time = None
 
 
-class Meeting:
+class Meeting():
     def __init__(
             self,
             agents: List[Agent],
@@ -128,7 +138,7 @@ class Meeting:
         self.stream_queue = asyncio.Queue()
         self.agent_runners = {
             agent.name: AgentRunner(agent, self)
-            for agent in agents
+            for agent in self.agents.values()
         }
         self._records: list[Record] = []
         self.max_rounds = None
@@ -168,6 +178,7 @@ class Meeting:
 
     async def print_stream_event(self, event):
         if isinstance(event, Record):
+            print(f"Round: {self.round}")
             print(self.format_record(event))
         elif isinstance(event, ToolEvent):
             print(f"Tool call: {event.tool_name} with args: {event.tool_args_info}\n")
@@ -182,19 +193,30 @@ class Meeting:
             f"Content:\n{record.content}\n"
         )
 
-    def record_to_prompt(self, record: Record, name: str) -> str:
-        participants_str = "\n".join(
-            [f"- {p}" for p in self.agents.keys()]
-        )
+    def record_to_prompt(self, record: Record, agent: Agent) -> str:
+        if agent.message_to is None:
+            participants_str = (
+                f"## Current participants\n" +
+                "\n".join([f"- {p}" for p in self.agents.keys()])
+            )
+        else:
+            participants_str = ""
+
+        if self.max_rounds is not None:
+            left_rounds = self.max_rounds - self.round
+            rounds_str = f"The meeting will end after {left_rounds} rounds.\n"
+        else:
+            rounds_str = ""
+
         return (
             f"# Meeting message\n"
-            f"You are a meeting participant, your name is {name}\n"
+            f"You are a meeting participant, your name is {agent.name}\n"
             f"Don't repeat the input message in your response.\n"
             f"Don't send message to 'all', when it's not necessary.\n"
             f"Don't need too plain language, be creative and think deeply.\n"
             f"You can ask questions to other participants.\n"
             f"You can use your tools to get more information.\n"
-            f"## Current participants\n"
+            f"{rounds_str}"
             f"{participants_str}\n"
             f"## Message\n"
             f"{self.format_record(record)}"
@@ -237,13 +259,8 @@ class Meeting:
         return self.format_meeting_records()
 
 
-class Team:
-    def __init__(
-            self,
-            leader: Agent,
-            members: List[Agent]):
-        self.leader = leader
-        self.members = members
-
-    async def solve(self, task: Task):
-        pass
+class BrainStorm(Meeting):
+    def __init__(self, agents: List[Agent]):
+        super().__init__(agents)
+        for agent in self.agents.values():
+            agent.message_to = "all"

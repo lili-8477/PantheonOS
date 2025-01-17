@@ -5,7 +5,7 @@ logging.basicConfig(level=logging.WARNING)
 
 import asyncio
 from pantheum.agent import Agent
-from pantheum.meeting import Meeting
+from pantheum.meeting import BrainStorm
 from pantheum.smart_func import smart_func
 from pantheum.tools.duckduckgo import duckduckgo_search
 from pantheum.tools.web_crawl import web_crawl
@@ -35,17 +35,26 @@ doctor = Agent(
 )
 
 
-meeting = Meeting([biologist, computer_scientist, doctor])
+meeting = BrainStorm([biologist, computer_scientist, doctor])
+
+
+@smart_func(model="gpt-4o-mini")
+async def generate_agenda(theme: str) -> str:
+    """
+    Generate a agenda for the meeting. 
+    The agenda should be a list of topics to discuss.
+    """
 
 
 @smart_func(model="gpt-4o")
-async def summarize(report: str, theme: str) -> str:
+async def summarize(report: str, theme: str, agenda: str) -> str:
     """
     Summarize the discussion on the theme,
     and give a conclusion in markdown format.
 
     Including:
     - The theme
+    - The agenda of the meeting
     - Procedure of the discussion
     - Thoughts of each participant
     - Results of the discussion
@@ -57,17 +66,21 @@ async def summarize(report: str, theme: str) -> str:
 
 async def main():
     theme = """Discuss how AI could be used in biology and medicine.  """
+    print("Generating meeting agenda...")
+    agenda = await generate_agenda(theme)
+    print("Meeting agenda:\n", agenda)
 
+    print("------------START-------------\n")
     report = await meeting.run(
-        theme,
+        agenda,
         rounds=20,
         print_stream=True,
     )
     print("------------END-------------\n")
-    summary = await summarize(report, theme)
+    summary = await summarize(report, theme, agenda)
     print(summary)
 
-    with open("./examples/brain_strom.md", "w", encoding="utf-8") as f:
+    with open("./brain_strom.md", "w", encoding="utf-8") as f:
         f.write(summary)
         f.write("\n\n")
         f.write("## Detailed discussion\n")

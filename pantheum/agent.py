@@ -36,6 +36,8 @@ class Agent:
         self.response_format = response_format
         self.use_short_term_memory = use_short_term_memory
         self.short_term_memory = short_term_memory or []
+        # Restrict message targets in meeting
+        self.message_to: None | list[str] = None
 
     def tool(self, func: Callable):
         """
