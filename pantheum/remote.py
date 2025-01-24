@@ -1,0 +1,69 @@
+from typing import Callable
+from functools import partial
+import inspect
+
+from magique.worker import MagiqueWorker
+from magique.client import connect_to_server
+
+
+DEFAULT_SERVER_HOST = "magique.spateo.aristoteleo.com"
+DEFAULT_SERVER_PORT = 80
+
+
+def tool(func: Callable | None = None, **kwargs):
+    """Mark tool in a ToolSet class
+    
+    Args:
+        job_type: "local", "thread" or "process"
+            Different job types will be executed in different ways.
+            Default "local"
+    """
+    if func is None:
+        return partial(tool, **kwargs)
+    func._is_tool = True
+    func._tool_params = kwargs
+    return func
+
+
+class ToolSet:
+    def __init__(
+            self, name: str,
+            worker_params: dict | None = None
+            ):
+        _worker_params = {
+            "service_name": name,
+            "server_host": DEFAULT_SERVER_HOST,
+            "server_port": DEFAULT_SERVER_PORT,
+            "need_auth": False,
+        }
+        if worker_params is not None:
+            _worker_params.update(worker_params)
+        self.worker = MagiqueWorker(**_worker_params)
+        self.setup_tools()
+
+    def setup_tools(self):
+        methods = inspect.getmembers(self, inspect.ismethod)
+        for _, method in methods:
+            if hasattr(method, "_is_tool"):
+                _kwargs = getattr(method, "_tool_params", {})
+                self.worker.register(method, **_kwargs)
+
+    @property
+    def service_id(self):
+        return self.worker.service_id
+
+    async def run(self, *args, **kwargs):
+        return await self.worker.run(*args, **kwargs)
+
+
+async def connect_remote(
+        service_name_or_id: str,
+        server_host: str = DEFAULT_SERVER_HOST,
+        server_port: int = DEFAULT_SERVER_PORT,
+        ):
+    server = await connect_to_server(
+        server_host,
+        server_port,
+    )
+    service = await server.get_service(service_name_or_id)
+    return service

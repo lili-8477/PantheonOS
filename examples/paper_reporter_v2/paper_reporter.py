@@ -6,8 +6,8 @@ import os
 
 from pantheum.task import Task, TasksSolver
 from pantheum.agent import Agent
-from pantheum.tools.duckduckgo import duckduckgo_search
-from pantheum.tools.web_crawl import web_crawl
+from pantheum.tools.web_browse.duckduckgo import duckduckgo_search
+from pantheum.tools.web_browse.web_crawl import web_crawl
 from pantheum.smart_func import smart_func
 
 

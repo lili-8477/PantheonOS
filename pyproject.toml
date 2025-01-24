@@ -4,10 +4,12 @@ description = "A framework for building LLM based multi-agent system."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "executor-engine>=0.3.0",
     "fire>=0.7.0",
-    "funcdesc>=0.1.6",
+    "funcdesc>=0.1.7.2",
     "litellm>=1.56.4",
     "loguru>=0.7.3",
+    "magique>=0.1.2",
     "openai>=1.58.1",
     "rich>=13.9.4",
     "textual>=1.0.0",
