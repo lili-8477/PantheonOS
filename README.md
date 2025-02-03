@@ -39,7 +39,7 @@ See the [examples](examples) folder for more details.
   + [ ] Agents
 - [x] Code Execution
   + [x] Python
-  + [ ] R (before hackathon)
+  + [x] R
 - [ ] RAG
 - [ ] Web GUI
   + [ ] Web page
