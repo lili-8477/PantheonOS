@@ -2,6 +2,7 @@ import uuid
 
 from ._rinter import AsyncRInterpreter
 from ...remote import ToolSet, tool
+from ...utils.log import logger
 
 
 class RInterpreterToolSet(ToolSet):
@@ -114,3 +115,11 @@ class RInterpreterToolSet(ToolSet):
             output += "\n[Warning] The execution of the command was interrupted because of the timeout. "
             output += "You can try to run get_interpreter_output to get the remaining output of the interpreter."
         return output
+
+    async def run_setup(self):
+        """Setup the toolset before running it."""
+        logger.warning(
+            "This ToolSet is not secure, it can be used to execute arbitrary code."
+            " Please be careful when using it."
+            " Highly recommend using it in a controlled environment like a docker container."
+        )

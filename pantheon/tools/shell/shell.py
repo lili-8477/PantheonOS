@@ -2,6 +2,7 @@ import uuid
 
 from ._shell import AsyncShell
 from ...remote import ToolSet, tool
+from ...utils.log import logger
 
 
 class ShellToolSet(ToolSet):
@@ -100,3 +101,11 @@ class ShellToolSet(ToolSet):
         if initial_output:
             output = initial_output + "\n" + output
         return output
+
+    async def run_setup(self):
+        """Setup the toolset before running it."""
+        logger.warning(
+            "This ToolSet is not secure, it can be used to execute arbitrary code."
+            " Please be careful when using it."
+            " Highly recommend using it in a controlled environment like a docker container."
+        )
