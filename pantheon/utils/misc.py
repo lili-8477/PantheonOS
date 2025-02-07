@@ -60,7 +60,14 @@ def desc_to_openai_dict(
     return func_dict
 
 
-def print_agent_message(agent_name: str, message: dict, console: Console | None = None):
+def print_agent_message(
+        agent_name: str,
+        message: dict,
+        console: Console | None = None,
+        print_tool_call: bool = True,
+        print_assistant_message: bool = True,
+        print_tool_response: bool = True,
+    ):
     if console is None:
         def _print(msg: str, title: str):
             print(msg)
@@ -69,7 +76,7 @@ def print_agent_message(agent_name: str, message: dict, console: Console | None 
             panel = Panel(msg, title=title)
             console.print(panel)
 
-    if tool_calls := message.get("tool_calls"):
+    if print_tool_call and (tool_calls := message.get("tool_calls")):
         for call in tool_calls:
             _print(
                 f"[bold]Agent [blue]{agent_name}[/blue] is using tool "
@@ -77,14 +84,14 @@ def print_agent_message(agent_name: str, message: dict, console: Console | None 
                 f"[yellow]{call.get('function', {}).get('arguments')}[/yellow]",
                 "Tool Call"
             )
-    if message.get("role") == "tool":
+    if print_tool_response and message.get("role") == "tool":
         _print(
             f"[bold]Agent [blue]{agent_name}[/blue] is using tool "
             f"[green]{message.get('tool_name')}[/green]:[/bold] "
             f"[yellow]{message.get('content')}[/yellow]",
             "Tool Response"
         )
-    elif message.get("role") == "assistant":
+    elif print_assistant_message and message.get("role") == "assistant":
         if message.get("content"):
             _print(
                 f"[bold]Agent [blue]{agent_name}[/blue]'s message:[/bold]\n"

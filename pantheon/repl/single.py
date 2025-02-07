@@ -2,10 +2,10 @@ import asyncio
 
 from rich.console import Console
 from rich.prompt import Prompt
-from rich.markdown import Markdown
 from rich.panel import Panel
 
 from ..agent import Agent
+from ..utils.misc import print_agent_message
 
 
 class Repl:
@@ -36,11 +36,22 @@ class Repl:
 
         self.console.print()
 
+    async def print_message(self):
+        while True:
+            message = await self.agent.events_queue.get()
+            print_agent_message(
+                self.agent.name,
+                message,
+                self.console,
+                print_assistant_message=False,
+            )
+
     async def run(self, message: str | dict | None = None):
         import logging
         logging.getLogger().setLevel(logging.WARNING)
 
         self.print_greeting()
+        print_task = asyncio.create_task(self.print_message())
 
         def ask_user():
             message = Prompt.ask("[red][bold]User[/bold][/red]")
@@ -57,42 +68,22 @@ class Repl:
         while True:
             self.console.print(f"[blue][bold]{self.agent.name}[/bold][/blue]: ")
 
-            def print_tool_message(message: str):
-                self.console.print(Panel(message, title="Tool Message"))
-        
             def process_chunk(chunk: dict):
                 content = chunk.get("content")
                 if content is not None:
                     self.console.print(content, end="")
-                else:
-                    if chunk.get("tool_calls") is None:
-                        self.console.print()
-        
-            def process_step_message(message: dict):
-                if tool_calls := message.get("tool_calls"):
-                    for call in tool_calls:
-                        print_tool_message(
-                            f"Agent [blue]{self.agent.name}[/blue] is using tool "
-                            f"[green]{call.get('function', {}).get('name')}[/green] "
-                            f"with arguments [yellow]{call.get('function', {}).get('arguments')}[/yellow]"
-                        )
-                if message.get("role") == "tool":
-                    print_tool_message(
-                        f"Agent [blue]{self.agent.name}[/blue] got result from tool "
-                        f"[green]{message.get('tool_name')}[/green]: "
-                        f"[yellow]{message.get('content')}[/yellow]"
-                    )
         
             await self.agent.run(
                 message,
                 process_chunk=process_chunk,
-                process_step_message=process_step_message,
             )
 
-            self.console.print()
+            self.console.print("\n")
             message = ask_user()
             if message == "exit":
                 break
+
+        print_task.cancel()
 
 
 if __name__ == "__main__":
