@@ -48,3 +48,7 @@ def process_messages(messages: list[dict], model: str) -> list[dict]:
     if model.startswith("deepseek/"):
         messages = convert_tool_message(messages)
     return messages
+
+
+def process_messages_for_save(messages: list[dict]) -> list[dict]:
+    return remove_parsed(messages)

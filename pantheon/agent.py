@@ -9,7 +9,7 @@ from pydantic import BaseModel, create_model
 from funcdesc import parse_func
 
 from .utils.misc import desc_to_openai_dict
-from .utils.llm import litellm, process_messages
+from .utils.llm import litellm, process_messages, process_messages_for_save
 from .types import AgentResponse, ResponseDetails, AgentInput, AgentTransfer
 from .remote import (
     ServiceProxy,
@@ -154,12 +154,13 @@ class Agent:
     async def acompletion(
             self,
             messages: list[dict],
+            model: str,
             tools: list[dict] | None = None,
             response_format: Any | None = None,
             process_chunk: Callable | None = None,
             ) -> dict:
         response = await litellm.acompletion(
-            model=self.model,
+            model=model,
             messages=messages,
             tools=tools,
             response_format=response_format,
@@ -205,7 +206,7 @@ class Agent:
 
         while len(history) - init_len < max_turns:
             message = {}
-            processed_messages = process_messages(history, self.model)
+            processed_messages = process_messages(history, model)
             if tool_use:
                 tools = self._convert_functions() or None
             else:
@@ -213,6 +214,7 @@ class Agent:
 
             message = await self.acompletion(
                 processed_messages,
+                model=model,
                 tools=tools,
                 response_format=Response,
                 process_chunk=process_chunk,
@@ -367,7 +369,7 @@ class Agent:
     def save_memory(self, file_path: str):
         """Save the memory to a file."""
         with open(file_path, "w") as f:
-            processed_memory = process_messages(self.memory, self.model)
+            processed_memory = process_messages_for_save(self.memory)
             json.dump(processed_memory, f)
 
     def load_memory(self, file_path: str):

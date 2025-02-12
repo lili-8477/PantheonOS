@@ -40,11 +40,15 @@ See the [examples](examples) folder for more details.
 - [x] Code Execution
   + [x] Python
   + [x] R
+  + [x] Shell
+- [x] Agent team
+  + [x] Sequential Team
+  + [x] Swarm Team
+  + [x] MoA(Mixture-of-Agents) Team
+- [x] Memory persistence
 - [ ] RAG
 - [ ] Web GUI
   + [ ] Web page
   + [ ] Slack (before hackathon)
-- [ ] Vision Model usage
-- [ ] Agent team
-- [ ] Long Term Memory
+- [ ] Vision ability
 - [ ] Documentation
