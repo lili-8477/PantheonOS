@@ -35,6 +35,7 @@ async def acompletion_openai(
                     delta = chunk.choices[0].delta.model_dump()
                     await run_func(process_chunk, delta)
                 if chunk.choices[0].finish_reason == "stop":
+                    await run_func(process_chunk, {"stop": True})
                     break
         final_message = await stream.get_final_completion()
     return final_message
@@ -67,6 +68,7 @@ async def acompletion_litellm(
             choice = chunk.choices[0]
             await run_func(process_chunk, choice.delta.model_dump())
             if choice.finish_reason == "stop":
+                await run_func(process_chunk, {"stop": True})
                 break
     complete_resp = litellm.stream_chunk_builder(response.chunks)
     return complete_resp

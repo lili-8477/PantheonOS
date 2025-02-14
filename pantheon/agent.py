@@ -30,6 +30,7 @@ class Agent:
         use_memory: bool = True,
         memory: list[dict] | None = None,
         tool_timeout: int | None = 10 * 60,
+        force_litellm: bool = False,
     ):
         self.id = uuid4()
         self.name = name
@@ -46,6 +47,7 @@ class Agent:
         self.memory = memory or []
         self.tool_timeout = tool_timeout
         self.events_queue: asyncio.Queue = asyncio.Queue()
+        self.force_litellm = force_litellm
         # Restrict message targets in meeting
         self.message_to: None | list[str] = None
 
@@ -153,8 +155,8 @@ class Agent:
             tool_use: bool = True,
             response_format: Any | None = None,
             process_chunk: Callable | None = None,
-            force_litellm: bool = False,
             ) -> dict:
+        force_litellm = self.force_litellm
         messages = process_messages(messages, model)
         provider = "openai"
         if "/" in model:

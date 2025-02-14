@@ -54,7 +54,10 @@ def desc_to_openai_dict(
 
         parameters[arg.name] = pdict
 
-        if arg.default is NotDef:
+        if litellm_mode:
+            if arg.default is NotDef:
+                required.append(arg.name)
+        else:
             required.append(arg.name)
 
     func_dict = {
@@ -65,14 +68,13 @@ def desc_to_openai_dict(
             "strict": not litellm_mode,
         },
     }
-    if parameters:
+    if (not litellm_mode) or (len(parameters) > 0):
         func_dict["function"]["parameters"] = {
             "type": "object",
             "properties": parameters,
             "required": required,
             "additionalProperties": False,
         }
-    import ipdb; ipdb.set_trace()
     return func_dict
 
 
