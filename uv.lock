@@ -703,11 +703,11 @@ wheels = [
 
 [[package]]
 name = "funcdesc"
-version = "0.1.8"
+version = "0.1.9"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ac/07/5904a0aadc91af67c68c44cd08e1b81f9b0f63d523248839de4352ddfb9a/funcdesc-0.1.8.tar.gz", hash = "sha256:778f6f7653b1076ef2b39b9eeb643cf6c6423fdb20c2218439fb7e1c4952ce31", size = 17987 }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/b9/65b2440f482c8ea0f131ae5b48451f363a54fe0c3b3b8b3e93d004a674c8/funcdesc-0.1.9.tar.gz", hash = "sha256:58c41fca8d8ea1838649e30ac6b19d3eae3e84c21ea99270f3b425a7eea846c0", size = 18047 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/2d/5fce24230585604fee6105e49d19d6d35c5b4a18f7ab181ed21e7d847ba0/funcdesc-0.1.8-py3-none-any.whl", hash = "sha256:45cccb0eda02fa6be026a614440bb71f9aad4eee03044938d5d2b82bd097e04d", size = 19411 },
+    { url = "https://files.pythonhosted.org/packages/fc/be/9c41632d6820acce499e99bf2068896014ca1d174f8523153766aec10394/funcdesc-0.1.9-py3-none-any.whl", hash = "sha256:3ffd965e03f3eddf9cf7692886b364108a5c370ab9bd7c406711b3ac195185fc", size = 19493 },
 ]
 
 [[package]]
@@ -1145,7 +1145,7 @@ wheels = [
 
 [[package]]
 name = "magique"
-version = "0.2.0"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "authlib" },
@@ -1164,7 +1164,7 @@ dependencies = [
     { name = "websockets" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/ea/0a54d8255abb4af4f1aace336981aca75cd012190d232e79b90221cfdc63/magique-0.2.0-py3-none-any.whl", hash = "sha256:523d38669c4190cc505752f42903869648b7a43b84b69ee8244ddb6ed6231875", size = 15337 },
+    { url = "https://files.pythonhosted.org/packages/8e/02/e5ac1a9ae6eaee83b48eb0b37c1033380626f0ce87ea2c05437a7c1e0377/magique-0.2.2-py3-none-any.whl", hash = "sha256:5bbd73057ad804b8557f16c01940184db8aa6b63d3316455f9eb58520f030cd2", size = 16539 },
 ]
 
 [[package]]
@@ -1562,7 +1562,7 @@ requires-dist = [
     { name = "funcdesc", specifier = ">=0.1.8" },
     { name = "litellm", specifier = ">=1.56.4" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "magique", specifier = ">=0.2.0" },
+    { name = "magique", specifier = ">=0.2.2" },
     { name = "openai", specifier = ">=1.58.1" },
     { name = "pillow", specifier = ">=10.4.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.4" },

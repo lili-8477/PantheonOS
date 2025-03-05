@@ -16,3 +16,28 @@ async def test_remote_agent():
     res = await remote_agent.run("What is the best scifi book?")
     assert isinstance(res, AgentResponse)
     service_task.cancel()
+
+
+async def test_remote_agent_print_chunk():
+    agent = Agent(
+        "scifi_fan",
+        "You are a scifi fan.",
+        model="gpt-4o-mini",
+    )
+    service = AgentService(agent)
+    service_task = asyncio.create_task(service.run())
+    await asyncio.sleep(1.0)
+    remote_agent = RemoteAgent(service.worker.service_id)
+    _flag = False
+    def print_chunk(chunk):
+        nonlocal _flag
+        _flag = True
+        print(chunk['content'], end='', flush=True)
+    res = await remote_agent.run(
+        "What is the best scifi book?", 
+        process_chunk=print_chunk,
+    )
+    assert isinstance(res, AgentResponse)
+    service_task.cancel()
+    assert _flag
+    assert remote_agent.name == "scifi_fan"

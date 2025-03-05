@@ -13,7 +13,7 @@ class Repl:
         self.team = team
         self.console = Console()
 
-    def print_greeting(self):
+    async def print_greeting(self):
         self.console.print(
             "[bold]Welcome to the Pantheon REPL![/bold]\n" +
             "You can start by typing a message or type 'exit' to exit.\n"
@@ -21,7 +21,7 @@ class Repl:
         # print team agents
         self.console.print("[bold]Team agents:[/bold]")
         for agent in self.team.agents.values():
-            print_agent(agent, self.console)
+            await print_agent(agent, self.console)
         self.console.print()
 
     async def print_message(self):
@@ -38,7 +38,7 @@ class Repl:
         import logging
         logging.getLogger().setLevel(logging.WARNING)
 
-        self.print_greeting()
+        await self.print_greeting()
         gather_task = asyncio.create_task(self.team.gather_events())
         print_task = asyncio.create_task(self.print_message())
 

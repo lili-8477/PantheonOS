@@ -7,14 +7,16 @@ from openai import pydantic_function_tool
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
+from magique.worker import ReverseCallable
 
 
 if TYPE_CHECKING:
     from ..agent import Agent
+    from ..remote.agent import RemoteAgent
 
 
 async def run_func(func: Callable, *args, **kwargs):
-    if inspect.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func) or isinstance(func, ReverseCallable):
         return await func(*args, **kwargs)
     return func(*args, **kwargs)
 
@@ -133,7 +135,11 @@ def print_agent_message(
                 )
 
 
-def print_agent(agent: "Agent", console: Console | None = None):
+async def print_agent(agent: "Agent | RemoteAgent", console: Console | None = None):
+    from ..remote.agent import RemoteAgent
+    is_remote = isinstance(agent, RemoteAgent)
+    if is_remote:
+        await agent.fetch_info()
     if console is None:
         def _print(msg: str):
             print(msg)
@@ -141,14 +147,27 @@ def print_agent(agent: "Agent", console: Console | None = None):
         def _print(msg: str):
             console.print(msg)
     _print(f"  - [blue]{agent.name}[/blue]")
+    # print remote info
+    if is_remote:
+        _print(f"    - [green]Remote[/green]")
+        _print(f"      - Server: {agent.server_host}:{agent.server_port}")
+        _print(f"      - Service ID: {agent.service_id_or_name}")
+    # print agent model
+    _print(f"    - [green]Model:[/green] {agent.model}")
     # print agent instructions
     _print(f"    - [green]Instructions:[/green] {agent.instructions}")
     # print agent tools
-    if agent.functions:
+    if is_remote:
+        function_names = agent.functions_names
+        toolset_proxies_names = agent.toolset_proxies_names
+    else:
+        function_names = agent.functions.keys()
+        toolset_proxies_names = agent.toolset_proxies.keys()
+    if function_names:
         _print("    - [green]Tools:[/green]")
-        for func in agent.functions.values():
-            _print(f"      - {func.__name__}")
-    if agent.toolset_proxies:
+        for func_name in function_names:
+            _print(f"      - {func_name}")
+    if toolset_proxies_names:
         _print("    - [green]Remote ToolSets:[/green]")
-        for proxy in agent.toolset_proxies.values():
-            _print(f"      - {proxy.service_info.service_name}")
+        for proxy_name in toolset_proxies_names:
+            _print(f"      - {proxy_name}")

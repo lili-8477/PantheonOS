@@ -30,8 +30,22 @@ class AgentService:
         resp = await self.agent.run(msg, **kwargs)
         return resp
 
+    async def get_info(self):
+        return {
+            "name": self.agent.name,
+            "instructions": self.agent.instructions,
+            "model": self.agent.model,
+            "functions_names": list(self.agent.functions.keys()),
+            "toolset_proxies_names": list(self.agent.toolset_proxies.keys()),
+        }
+
+    async def get_message_queue(self):
+        return await self.agent.events_queue.get()
+
     def setup_worker(self):
         self.worker.register(self.response)
+        self.worker.register(self.get_info)
+        self.worker.register(self.get_message_queue)
 
     async def run(self, log_level: str = "INFO"):
         from loguru import logger
@@ -49,16 +63,52 @@ class RemoteAgent:
             service_id_or_name: str,
             server_host: str = DEFAULT_SERVER_HOST,
             server_port: int = DEFAULT_SERVER_PORT,
+            **remote_kwargs,
             ):
         self.service_id_or_name = service_id_or_name
         self.server_host = server_host
         self.server_port = server_port
+        self.remote_kwargs = remote_kwargs
+        self.name = None
+        self.instructions = None
+        self.model = None
+        self.message_queue = RemoteAgentMessageQueue(self)
 
-    async def run(self, msg: AgentInput, **kwargs):
-        s = await connect_remote(
+    async def _connect(self):
+        return await connect_remote(
             self.service_id_or_name,
             self.server_host,
             self.server_port,
+            **self.remote_kwargs,
         )
+
+    async def fetch_info(self):
+        s = await self._connect()
+        info = await s.invoke("get_info")
+        self.name = info["name"]
+        self.instructions = info["instructions"]
+        self.model = info["model"]
+        self.functions_names = info["functions_names"]
+        self.toolset_proxies_names = info["toolset_proxies_names"]
+        return info
+
+    async def run(self, msg: AgentInput, **kwargs):
+        await self.fetch_info()
+        s = await self._connect()
         return await s.invoke("response", {"msg": msg, **kwargs})
 
+    async def chat(self, message: str | dict | None = None):
+        """Chat with the agent with a REPL interface."""
+        await self.fetch_info()
+        from ..repl.single import Repl
+        repl = Repl(self)
+        await repl.run(message)
+
+
+class RemoteAgentMessageQueue:
+    def __init__(self, agent: "RemoteAgent"):
+        self.agent = agent
+
+    async def get(self):
+        s = await self.agent._connect()
+        return await s.invoke("get_message_queue")

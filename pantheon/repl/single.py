@@ -4,23 +4,24 @@ from rich.console import Console
 from rich.prompt import Prompt
 
 from ..agent import Agent
+from ..remote.agent import RemoteAgent
 from ..utils.misc import print_agent_message, print_agent
 
 
 class Repl:
-    def __init__(self, agent: Agent):
+    def __init__(self, agent: Agent | RemoteAgent):
         """REPL for a single agent."""
         self.agent = agent
         self.console = Console()
 
-    def print_greeting(self):
+    async def print_greeting(self):
         self.console.print(
             "[bold]Welcome to the Pantheon REPL![/bold]\n" +
             "You can start by typing a message or type 'exit' to exit.\n"
         )
         # print current agent
         self.console.print("[bold]Current agent:[/bold]")
-        print_agent(self.agent, self.console)
+        await print_agent(self.agent, self.console)
         self.console.print()
 
     async def print_message(self):
@@ -37,7 +38,7 @@ class Repl:
         import logging
         logging.getLogger().setLevel(logging.WARNING)
 
-        self.print_greeting()
+        await self.print_greeting()
         print_task = asyncio.create_task(self.print_message())
 
         def ask_user():
