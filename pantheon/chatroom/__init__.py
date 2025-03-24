@@ -6,6 +6,7 @@ from magique.worker import MagiqueWorker
 from ..agent import Agent
 from ..team import Team
 from ..memory import MemoryManager
+from ..utils.misc import run_func
 
 
 class ChatRoom:
@@ -13,7 +14,7 @@ class ChatRoom:
         self,
         agent: Agent | Team,
         memory_manager: MemoryManager,
-        name: str = "Pantheon Chat Room",
+        name: str = "pantheon-chatroom",
         description: str = "Chatroom for Pantheon agents",
         worker_params: dict | None = None,
     ):
@@ -34,11 +35,13 @@ class ChatRoom:
         self.chat_memories = {}
 
     def setup_handlers(self):
-        self.worker.register(self.new_chat)
+        self.worker.register(self.create_chat)
         self.worker.register(self.delete_chat)
         self.worker.register(self.chat)
+        self.worker.register(self.list_chats)
+        self.worker.register(self.get_chat_messages)
 
-    async def new_chat(self, name: str | None = None) -> str:
+    async def create_chat(self, name: str | None = None) -> str:
         memory = await self.memory_manager.new_memory(name)
         self.chat_memories[memory.name] = memory
         return {"success": True, "message": "Chat created successfully", "chat_name": memory.name}
@@ -48,6 +51,21 @@ class ChatRoom:
             await self.memory_manager.delete_memory(name)
             del self.chat_memories[name]
             return {"success": True, "message": "Chat deleted successfully"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    async def list_chats(self):
+        try:
+            names = await run_func(self.memory_manager.list_memories)
+            return {"success": True, "chat_names": names}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    async def get_chat_messages(self, name: str):
+        try:
+            memory = await run_func(self.memory_manager.get_memory, name)
+            messages = await run_func(memory.get_messages)
+            return {"success": True, "messages": messages}
         except Exception as e:
             return {"success": False, "message": str(e)}
 

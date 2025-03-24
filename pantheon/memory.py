@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from .utils.llm import process_messages_for_store
+from .utils.log import logger
 
 
 class Memory:
@@ -42,6 +43,9 @@ class MemoryManager:
     def get_memory(self, name: str) -> Memory:
         return self.memory_store[name]
 
+    def list_memories(self):
+        return list(self.memory_store.keys())
+
     def save(self, dir_path: str | Path):
         path = Path(dir_path)
         if not path.exists():
@@ -53,5 +57,11 @@ class MemoryManager:
         path = Path(dir_path)
         if not path.exists():
             path.mkdir(parents=True)
-        for name, memory in self.memory_store.items():
-            memory.load(path / f"{name}.json")
+        for file in path.glob("*.json"):
+            memory = Memory(file.stem)
+            try:
+                memory.load(file)
+                logger.info(f"Loaded memory: {memory.name} from {file}")
+                self.memory_store[memory.name] = memory
+            except Exception as e:
+                logger.error(f"Error loading memory: {file} - {e}")

@@ -40,7 +40,10 @@ class MemoryManagerService:
     async def add_messages(self, memory_name: str, messages: list[dict]):
         memory = self.memory_manager.get_memory(memory_name)
         memory.add_messages(messages)
-        self.memory_manager.save(self.memory_dir)
+        await self.save()
+
+    async def list_memories(self):
+        return self.memory_manager.list_memories()
 
     async def save(self):
         self.memory_manager.save(self.memory_dir)
@@ -50,6 +53,7 @@ class MemoryManagerService:
         self.worker.register(self.get_messages)
         self.worker.register(self.add_messages)
         self.worker.register(self.save)
+        self.worker.register(self.list_memories)
 
     async def run(self, log_level: str = "INFO"):
         from loguru import logger
@@ -97,6 +101,14 @@ class RemoteMemoryManager:
         await self.connect()
         memory_name = await self.service.invoke("new_memory", {"name": name})
         return RemoteMemory(self.service, memory_name)
+
+    async def get_memory(self, name: str) -> RemoteMemory:
+        await self.connect()
+        return RemoteMemory(self.service, name)
+
+    async def list_memories(self):
+        await self.connect()
+        return await self.service.invoke("list_memories", {})
 
     async def save(self):
         await self.connect()
