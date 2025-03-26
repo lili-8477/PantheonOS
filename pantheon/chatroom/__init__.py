@@ -7,6 +7,7 @@ from ..agent import Agent
 from ..team import Team
 from ..memory import MemoryManager
 from ..utils.misc import run_func
+from ..utils.log import logger
 
 
 class ChatRoom:
@@ -32,7 +33,6 @@ class ChatRoom:
             _worker_params.update(worker_params)
         self.worker = MagiqueWorker(**_worker_params)
         self.setup_handlers()
-        self.chat_memories = {}
 
     def setup_handlers(self):
         self.worker.register(self.create_chat)
@@ -40,43 +40,74 @@ class ChatRoom:
         self.worker.register(self.chat)
         self.worker.register(self.list_chats)
         self.worker.register(self.get_chat_messages)
+        self.worker.register(self.update_chat_name)
 
-    async def create_chat(self, name: str | None = None) -> str:
-        memory = await self.memory_manager.new_memory(name)
-        self.chat_memories[memory.name] = memory
-        return {"success": True, "message": "Chat created successfully", "chat_name": memory.name}
+    async def create_chat(self, chat_name: str | None = None) -> dict:
+        memory = await run_func(self.memory_manager.new_memory, chat_name)
+        return {
+            "success": True,
+            "message": "Chat created successfully",
+            "chat_name": memory.name,
+            "chat_id": memory.id,
+        }
 
-    async def delete_chat(self, name: str):
+    async def delete_chat(self, chat_id: str):
         try:
-            await self.memory_manager.delete_memory(name)
-            del self.chat_memories[name]
+            await run_func(self.memory_manager.delete_memory, chat_id)
             return {"success": True, "message": "Chat deleted successfully"}
         except Exception as e:
+            logger.error(f"Error deleting chat: {e}")
             return {"success": False, "message": str(e)}
 
-    async def list_chats(self):
+    async def list_chats(self) -> dict:
         try:
-            names = await run_func(self.memory_manager.list_memories)
-            return {"success": True, "chat_names": names}
+            ids = await run_func(self.memory_manager.list_memories)
+            names = []
+            for id in ids:
+                memory = await run_func(self.memory_manager.get_memory, id)
+                names.append(memory.name)
+            return {"success": True, "chat_ids": ids, "chat_names": names}
         except Exception as e:
+            import traceback
+            traceback.print_exc()
+            logger.error(f"Error listing chats: {e}")
             return {"success": False, "message": str(e)}
 
-    async def get_chat_messages(self, name: str):
+    async def get_chat_messages(self, chat_id: str):
         try:
-            memory = await run_func(self.memory_manager.get_memory, name)
+            memory = await run_func(self.memory_manager.get_memory, chat_id)
             messages = await run_func(memory.get_messages)
             return {"success": True, "messages": messages}
         except Exception as e:
+            logger.error(f"Error getting chat messages: {e}")
             return {"success": False, "message": str(e)}
+
+    async def update_chat_name(self, chat_id: str, chat_name: str):
+        try:
+            await run_func(
+                self.memory_manager.update_memory_name,
+                chat_id,
+                chat_name,
+                )
+            return {
+                "success": True,
+                "message": "Chat name updated successfully",
+            }
+        except Exception as e:
+            logger.error(f"Error updating chat name: {e}")
+            return {
+                "success": False,
+                "message": str(e),
+                }
 
     async def chat(
         self,
-        chat_name: str,
+        chat_id: str,
         message: str,
-        process_chunk = None,
-        process_step_message = None,
+        process_chunk=None,
+        process_step_message=None,
     ):
-        memory = self.chat_memories[chat_name]
+        memory = await run_func(self.memory_manager.get_memory, chat_id)
         resp = await self.agent.run(
             message,
             memory=memory,

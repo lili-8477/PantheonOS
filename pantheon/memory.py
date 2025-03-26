@@ -58,6 +58,9 @@ class MemoryManager:
     def get_memory(self, id: str) -> Memory:
         return self.memory_store[id]
 
+    def delete_memory(self, id: str):
+        del self.memory_store[id]
+
     def list_memories(self):
         return list(self.memory_store.keys())
 
@@ -72,3 +75,8 @@ class MemoryManager:
             memory = Memory.load(str(file))
             logger.info(f"Loaded memory: {memory.name} from {file}")
             self.memory_store[memory.id] = memory
+
+    def update_memory_name(self, memory_id: str, name: str):
+        memory = self.get_memory(memory_id)
+        memory.name = name
+        self.save()

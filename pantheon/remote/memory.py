@@ -34,6 +34,9 @@ class MemoryManagerService:
         memory = self.memory_manager.get_memory(id)
         return {"id": memory.id, "name": memory.name}
 
+    async def delete_memory(self, id: str):
+        self.memory_manager.delete_memory(id)
+
     async def get_messages(self, memory_id: str) -> list[dict]:
         memory = self.memory_manager.get_memory(memory_id)
         return memory.get_messages()
@@ -41,6 +44,11 @@ class MemoryManagerService:
     async def add_messages(self, memory_id: str, messages: list[dict]):
         memory = self.memory_manager.get_memory(memory_id)
         memory.add_messages(messages)
+        await self.save()
+
+    async def update_memory_name(self, memory_id: str, name: str):
+        memory = self.memory_manager.get_memory(memory_id)
+        memory.name = name
         await self.save()
 
     async def list_memories(self):
@@ -55,6 +63,9 @@ class MemoryManagerService:
         self.worker.register(self.add_messages)
         self.worker.register(self.save)
         self.worker.register(self.list_memories)
+        self.worker.register(self.update_memory_name)
+        self.worker.register(self.get_memory)
+        self.worker.register(self.delete_memory)
 
     async def run(self, log_level: str = "INFO"):
         from loguru import logger
@@ -119,13 +130,28 @@ class RemoteMemoryManager:
         memory_info = await self.service.invoke("get_memory", {"id": id})
         return RemoteMemory(self.service, memory_info["id"], memory_info["name"])
 
+    async def delete_memory(self, id: str):
+        await self.connect()
+        assert self.service is not None
+        await self.service.invoke("delete_memory", {"id": id})
+
     async def list_memories(self):
         await self.connect()
+        assert self.service is not None
         return await self.service.invoke("list_memories", {})
 
     async def save(self):
         await self.connect()
+        assert self.service is not None
         await self.service.invoke("save", {})
+
+    async def update_memory_name(self, memory_id: str, name: str):
+        await self.connect()
+        assert self.service is not None
+        await self.service.invoke(
+            "update_memory_name",
+            {"memory_id": memory_id, "name": name},
+        )
 
 
 async def start_memory_service(
