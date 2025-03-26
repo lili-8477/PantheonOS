@@ -113,8 +113,6 @@ def convert_tool_message(messages: list[dict]) -> list[dict]:
 def process_messages(messages: list[dict], model: str) -> list[dict]:
     messages = deepcopy(messages)
     messages = remove_parsed(messages)
-    if model.startswith("deepseek/"):
-        messages = convert_tool_message(messages)
     return messages
 
 
