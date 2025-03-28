@@ -1,18 +1,30 @@
 import asyncio
 from pathlib import Path
+from typing import Callable, Awaitable
 
 import fire
 
 from .room import ChatRoom
 from ..remote.memory import MemoryManagerService, RemoteMemoryManager
 from ..agent import Agent
+from ..team import Team
 from .endpoint import Endpoint
+
+
+async def default_agent_factory() -> Agent | Team:
+    agent = Agent(
+        name="Pantheon",
+        instructions="You are a helpful assistant that can answer questions and help with tasks.",
+        model="gpt-4o",
+    )
+    return agent
 
 
 async def main(
     service_name: str = "pantheon-chatroom",
     memory_path: str = "./.pantheon-chatroom",
     workspace_path: str = "./.pantheon-chatroom-workspace",
+    agent_factory: Callable[[], Awaitable[Agent | Team]] = default_agent_factory,
     log_level: str = "INFO",
 ):
     w_path = Path(workspace_path)
@@ -25,11 +37,7 @@ async def main(
     endpoint = Endpoint(workspace_path=workspace_path)
     asyncio.create_task(endpoint.run(log_level=log_level))
     await asyncio.sleep(0.5)
-    agent = Agent(
-        name="Pantheon",
-        instructions="You are a helpful assistant that can answer questions and help with tasks.",
-        model="gpt-4o-mini",
-    )
+    agent = await agent_factory()
     s = await endpoint.get_service("python_interpreter")
     if s is None:
         raise ValueError("Python interpreter service not found")
