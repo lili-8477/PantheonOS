@@ -40,6 +40,7 @@ class Endpoint:
         self.worker.register(self.list_services)
         self.worker.register(self.add_service)
         self.worker.register(self.get_service)
+        self.worker.register(self.fetch_image_base64)
 
     async def list_services(self) -> list[dict]:
         res = []
@@ -55,8 +56,8 @@ class Endpoint:
             })
         return res
 
-    async def display_image(self, image_path: str) -> dict:
-        """Display an image. return the base64 encoded image."""
+    async def fetch_image_base64(self, image_path: str) -> dict:
+        """Fetch an image and return the base64 encoded image."""
         if '..' in image_path:
             return {"success": False, "error": "Image path cannot contain '..'"}
         i_path = self.workspace_path / image_path
@@ -70,7 +71,6 @@ class Endpoint:
             data_uri = f"data:image/{format};base64,{b64}"
         return {
             "success": True,
-            "hidden_to_model": ["data_uri"],
             "data_uri": data_uri,
         }
 
@@ -113,6 +113,7 @@ class Endpoint:
         toolset = PythonInterpreterToolSet(
             name="python_interpreter",
             workdir=str(self.workspace_path),
+            init_code="import matplotlib; matplotlib.use('Agg')"
         )
         self.services.append(toolset)
         toolset = FileManagerToolSet(

@@ -2,6 +2,7 @@ import sys
 
 from magique.ai.constant import DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT
 from magique.worker import MagiqueWorker
+from magique.ai import connect_remote
 
 from ..agent import Agent
 from ..team import Team
@@ -15,12 +16,14 @@ class ChatRoom:
     def __init__(
         self,
         agent: Agent | Team,
+        endpoint_service_id: str,
         memory_manager: MemoryManager | RemoteMemoryManager,
         name: str = "pantheon-chatroom",
         description: str = "Chatroom for Pantheon agents",
         worker_params: dict | None = None,
     ):
         self.agent = agent
+        self.endpoint_service_id = endpoint_service_id
         self.memory_manager = memory_manager
         self.name = name
         self.description = description
@@ -42,6 +45,16 @@ class ChatRoom:
         self.worker.register(self.list_chats)
         self.worker.register(self.get_chat_messages)
         self.worker.register(self.update_chat_name)
+        self.worker.register(self.get_endpoint)
+
+    async def get_endpoint(self) -> dict:
+        s = await connect_remote(self.endpoint_service_id)
+        info = await s.fetch_service_info()
+        return {
+            "success": True,
+            "service_name": info.service_name,
+            "service_id": info.service_id,
+        }
 
     async def create_chat(self, chat_name: str | None = None) -> dict:
         memory = await run_func(self.memory_manager.new_memory, chat_name)

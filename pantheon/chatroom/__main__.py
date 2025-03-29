@@ -42,7 +42,7 @@ async def main(
     if s is None:
         raise ValueError("Python interpreter service not found")
     await agent.remote_toolset(s["id"])
-    chat_room = ChatRoom(agent, remote_memory_manager, name=service_name)
+    chat_room = ChatRoom(agent, endpoint.worker.service_id, remote_memory_manager, name=service_name)
     await chat_room.run(log_level=log_level)
 
 
