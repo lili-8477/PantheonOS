@@ -16,32 +16,35 @@ from magique.ai import connect_remote
 class PythonInterpreterToolSetPatchMatplotlib(PythonInterpreterToolSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.init_code = """import matplotlib; matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import os
-import uuid
+        self.init_code = """try:
+    import matplotlib; matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import os
+    import uuid
 
-GLOBAL_FIG_PATH = None
-GLOBAL_FIG_DIR = ".matplotlib_figs"
+    GLOBAL_FIG_PATH = None
+    GLOBAL_FIG_DIR = ".matplotlib_figs"
 
-original_show = plt.show
+    original_show = plt.show
 
-def __custom_plt_show(*args, **kwargs):
-    global GLOBAL_FIG_PATH
-    fig = plt.gcf()
-    if not fig.get_axes():
-        print("No active figure to save.")
+    def __custom_plt_show(*args, **kwargs):
+        global GLOBAL_FIG_PATH
+        fig = plt.gcf()
+        if not fig.get_axes():
+            print("No active figure to save.")
+            plt.close(fig)
+            return
+
+        fig_uuid = str(uuid.uuid4())
+        os.makedirs(GLOBAL_FIG_DIR, exist_ok=True)
+        GLOBAL_FIG_PATH = os.path.join(GLOBAL_FIG_DIR, fig_uuid + ".png")
+        fig.savefig(GLOBAL_FIG_PATH, format='png')
         plt.close(fig)
-        return
 
-    fig_uuid = str(uuid.uuid4())
-    os.makedirs(GLOBAL_FIG_DIR, exist_ok=True)
-    GLOBAL_FIG_PATH = os.path.join(GLOBAL_FIG_DIR, fig_uuid + ".png")
-    fig.savefig(GLOBAL_FIG_PATH, format='png')
-    plt.close(fig)
-
-__plt_show = plt.show
-plt.show = __custom_plt_show
+    __plt_show = plt.show
+    plt.show = __custom_plt_show
+except Exception as e:
+    print(f"Error in matplotlib initialization: {e}")
 """
 
     @tool
