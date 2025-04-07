@@ -50,6 +50,7 @@ class AgentService:
 
     async def add_tool(self, func: Callable):
         self.agent.tool(func)
+        return {"success": True}
 
     def setup_worker(self):
         self.worker.register(self.response)
@@ -124,7 +125,7 @@ class RemoteAgentMessageQueue:
     def __init__(self, agent: "RemoteAgent"):
         self.agent = agent
 
-    async def get(self, interval: float = 0.1):
+    async def get(self, interval: float = 0.2):
         s = await self.agent._connect()
         while True:
             res = await s.invoke("check_message_queue")
