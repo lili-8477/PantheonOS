@@ -59,7 +59,6 @@ async def start_services(
         w_path.mkdir(parents=True, exist_ok=True)
         endpoint = Endpoint(workspace_path=workspace_path)
         asyncio.create_task(endpoint.run(log_level=log_level))
-        await asyncio.sleep(1.0)
         endpoint_service_id = endpoint.worker.service_id
 
     endpoint = await connect_remote(endpoint_service_id)

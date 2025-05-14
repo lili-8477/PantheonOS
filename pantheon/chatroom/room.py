@@ -185,6 +185,7 @@ class ChatRoom:
             process_chunk=process_chunk,
             process_step_message=process_step_message,
         )
+        await run_func(self.memory_manager.save)
         return {"success": True, "response": resp.content}
 
     async def run(self, log_level: str = "INFO"):
