@@ -190,6 +190,8 @@ class ChatRoom:
             return {"success": True, "response": resp.content}
         except Exception as e:
             logger.error(f"Error chatting: {e}")
+            import traceback
+            traceback.print_exc()
             return {"success": False, "message": str(e)}
 
     async def run(self, log_level: str = "INFO"):
