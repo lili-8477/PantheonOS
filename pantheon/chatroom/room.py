@@ -1,3 +1,4 @@
+import io
 import sys
 import asyncio
 from pathlib import Path
@@ -8,6 +9,7 @@ import yaml
 from magique.worker import MagiqueWorker
 from magique.ai import connect_remote
 from magique.ai.constant import SERVER_URLS
+import openai
 
 from ..agent import Agent
 from ..team import SwarmCenterTeam
@@ -30,6 +32,7 @@ class ChatRoom:
         worker_params: dict | None = None,
         server_url: str | list[str] | None = None,
         endpoint_connect_params: dict | None = None,
+        speech_to_text_model: str = "gpt-4o-mini-transcribe",
     ):
         self.memory_dir = Path(memory_dir)
         self.memory_manager = MemoryManager(self.memory_dir)
@@ -70,6 +73,7 @@ class ChatRoom:
         self.worker = MagiqueWorker(**_worker_params)
         self.setup_handlers()
         self.endpoint_connect_params = endpoint_connect_params or {}
+        self.speech_to_text_model = speech_to_text_model
         self.threads: dict[str, Thread] = {}
 
     async def setup_agents(self):
@@ -104,6 +108,7 @@ class ChatRoom:
         self.worker.register(self.set_active_agent)
         self.worker.register(self.get_active_agent)
         self.worker.register(self.attach_hooks)
+        self.worker.register(self.speech_to_text)
 
     async def get_endpoint(self) -> dict:
         s = await connect_remote(
@@ -300,6 +305,44 @@ class ChatRoom:
         await run_func(self.memory_manager.save)
         del self.threads[chat_id]
         return thread.response
+
+    async def speech_to_text(self, bytes_data: bytes):
+        try:
+            client = openai.OpenAI()
+            
+            # Try different audio formats until one works
+            formats = ["webm", "mp4", "wav", "mp3"]
+            last_error = None
+            
+            for fmt in formats:
+                try:
+                    # Create a BytesIO object with a proper filename for format detection
+                    audio_file = io.BytesIO(bytes_data)
+                    audio_file.name = f"audio.{fmt}"
+                    
+                    response = client.audio.transcriptions.create(
+                        model=self.speech_to_text_model,
+                        file=audio_file,
+                    )
+                    
+                    return {
+                        "success": True,
+                        "text": response.text,
+                    }
+                except Exception as format_error:
+                    last_error = format_error
+                    logger.debug(f"Failed with format {fmt}: {format_error}")
+                    continue
+            
+            # If all formats failed, raise the last error
+            raise last_error
+            
+        except Exception as e:
+            logger.error(f"Error transcribing speech: {e}")
+            return {
+                "success": False,
+                "text": str(e),
+            }
 
     async def run(self, log_level: str = "INFO"):
         from loguru import logger

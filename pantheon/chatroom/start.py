@@ -10,6 +10,7 @@ from magique.ai import connect_remote
 async def start_services(
     service_name: str = "pantheon-chatroom",
     memory_dir: str = "./.pantheon-chatroom",
+    id_hash: str | None = None,
     endpoint_service_id: str | None = None,
     workspace_path: str = "./.pantheon-chatroom-workspace",
     agents_template: dict | str | None = None,
@@ -18,6 +19,7 @@ async def start_services(
     worker_params: dict | None = None,
     worker_params_endpoint: dict | None = None,
     endpoint_connect_params: dict | None = None,
+    speech_to_text_model: str = "gpt-4o-mini-transcribe",
 ):
     if endpoint_service_id is None:
         from magique.ai.endpoint import Endpoint
@@ -35,6 +37,11 @@ async def start_services(
     endpoint_connect_params = endpoint_connect_params or {}
     endpoint = await connect_remote(endpoint_service_id, **endpoint_connect_params)
 
+    if worker_params is None:
+        worker_params = {}
+    if "id_hash" not in worker_params:
+        worker_params["id_hash"] = id_hash
+
     chat_room = ChatRoom(
         endpoint_service_id=endpoint_service_id,
         agents_template=agents_template,
@@ -42,5 +49,6 @@ async def start_services(
         name=service_name,
         worker_params=worker_params,
         endpoint_connect_params=endpoint_connect_params,
+        speech_to_text_model=speech_to_text_model,
     )
     await chat_room.run(log_level=log_level)
