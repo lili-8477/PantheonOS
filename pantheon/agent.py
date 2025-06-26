@@ -245,6 +245,7 @@ class Agent:
         provider = "openai"
         if "/" in model:
             provider = model.split("/")[0]
+            model_name = model.split("/")[1]
         litellm_mode = (provider != "openai") or force_litellm
 
         tools = None
@@ -257,7 +258,7 @@ class Agent:
         if not litellm_mode:
             complete_resp = await acompletion_openai(
                 messages=messages,
-                model=model,
+                model=model_name,
                 tools=tools,
                 response_format=response_format,
                 process_chunk=process_chunk,
