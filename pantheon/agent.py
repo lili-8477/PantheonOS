@@ -59,6 +59,28 @@ class StopRunning(Exception):
 
 
 class Agent:
+    """
+    The Agent class is the core component of Pantheon,
+    providing a flexible interface for creating AI-powered agents with tools,
+    memory, and collaboration capabilities.
+
+    Args:
+        name: The name of the agent.
+        instructions: The instructions for the agent.
+            The instructions are the system instructions that the agent will follow.
+        model: The model to use for the agent.
+            Can be a single model or list of fallback models.
+        icon: The icon to use for the agent.
+        tools: The tools to use for the agent.
+        response_format: The response format to use for the agent.
+            It can be a Pydantic model or a function that returns a Pydantic model.
+        use_memory: Whether to use memory for the agent. (default: True)
+        memory: The memory to use for the agent.
+            If not provided, a new memory will be created.
+        tool_timeout: The timeout for the tool. (default: 10 minutes)
+        force_litellm: Whether to force using LiteLLM. (default: False)
+        max_tool_content_length: The maximum length of the tool content. (default: 100000)
+    """
     def __init__(
         self,
         name: str,
@@ -100,6 +122,13 @@ class Agent:
     def tool(self, func: Callable, key: str | None = None):
         """
         Add a tool to the agent.
+
+        Args:
+            func: The tool function to add to the agent.
+            key: The key to use for the tool. If not provided, the name of the function will be used.
+
+        Returns:
+            The agent instance.
         """
         if key is None:
             if hasattr(func, "__name__"):
@@ -117,7 +146,16 @@ class Agent:
             server_url: str | list[str] | None = None,
             **kwargs,
             ):
-        """Add a remote toolset to the agent."""
+        """Add a remote toolset to the agent.
+        
+        Args:
+            service_id_or_name: The service ID or name of the toolset.
+            server_url: The URL of the magique server.
+            **kwargs: Additional keyword arguments to pass to the connect_remote function.
+
+        Returns:
+            The agent instance.
+        """
         s = await connect_remote(
             service_id_or_name,
             server_url,
@@ -127,7 +165,14 @@ class Agent:
         return self
 
     def toolset(self, toolset: ToolSet):
-        """Add a toolset to the agent."""
+        """Add a toolset to the agent.
+        
+        Args:
+            toolset: The toolset to add to the agent.
+
+        Returns:
+            The agent instance.
+        """
         for name, (func, _) in toolset.worker.functions.items():
             self.tool(func, key=name)
         return self
@@ -167,7 +212,7 @@ class Agent:
                 functions.append(func_dict)
         return functions
 
-    async def handle_tool_calls(
+    async def _handle_tool_calls(
             self,
             tool_calls: list,
             context_variables: dict,
@@ -272,7 +317,7 @@ class Agent:
                 })
         return messages
 
-    async def acompletion(
+    async def _acompletion(
             self,
             messages: list[dict],
             model: str,
@@ -323,13 +368,13 @@ class Agent:
             message = complete_resp.choices[0].message.model_dump()
         return message
 
-    async def acompletion_with_models(self, history, tool_use, response_format, process_chunk, allow_transfer):
+    async def _acompletion_with_models(self, history, tool_use, response_format, process_chunk, allow_transfer):
         error_count = 0
         for model in self.models:
             if error_count > 0:
                 logger.warning(f"Try to use {model}, because of the error of the previous model.")
             try:
-                message = await self.acompletion(
+                message = await self._acompletion(
                     history,
                     model=model,
                     tool_use=tool_use,
@@ -347,7 +392,7 @@ class Agent:
         else:
             return {}
 
-    async def run_stream(
+    async def _run_stream(
         self,
         messages: list[dict],
         process_chunk: Callable | None = None,
@@ -387,7 +432,7 @@ class Agent:
             _process_chunk = process_chunk
 
         while len(history) - init_len < max_turns:
-            message = await self.acompletion_with_models(
+            message = await self._acompletion_with_models(
                 history,
                 tool_use,
                 Response,
@@ -411,7 +456,7 @@ class Agent:
             if not message.get("tool_calls"):
                 break
 
-            tool_messages = await self.handle_tool_calls(
+            tool_messages = await self._handle_tool_calls(
                 message["tool_calls"],
                 context_variables=context_variables,
                 timeout=tool_timeout,
@@ -441,7 +486,7 @@ class Agent:
             context_variables=context_variables,
         )
 
-    def input_to_openai_messages(
+    def _input_to_openai_messages(
             self,
             msg: AgentInput,
             ) -> list[dict]:
@@ -511,7 +556,7 @@ class Agent:
         _use_m = self.use_memory
         if use_memory is not None:
             _use_m = use_memory
-        new_input_messages = self.input_to_openai_messages(msg)
+        new_input_messages = self._input_to_openai_messages(msg)
         memory = memory or self.memory
         if _use_m:
             memory.cleanup()
@@ -538,7 +583,7 @@ class Agent:
             _process_step_message = process_step_message
 
         try:
-            details = await self.run_stream(
+            details = await self._run_stream(
                 messages=messages,
                 response_format=response_format,
                 tool_use=tool_use,

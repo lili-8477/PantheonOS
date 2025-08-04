@@ -21,7 +21,7 @@ Using Web Search
 
 .. code-block:: python
 
-   from magique.ai.tools.web_browse import duckduckgo_search, web_crawl
+   from pantheon.toolsets.web_browse import duckduckgo_search, web_crawl
    from pantheon.agent import Agent
    
    # Create agent with web browsing capabilities

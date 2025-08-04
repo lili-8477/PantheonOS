@@ -219,7 +219,7 @@ Example Contributions
 .. code-block:: python
 
    # pantheon/tools/new_tool.py
-   from magique.ai.toolset import Toolset
+   from pantheon.toolsets.utils.toolset import Toolset
    
    class NewToolSet(Toolset):
        def __init__(self, name: str = "new_tools"):

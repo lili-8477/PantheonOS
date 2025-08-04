@@ -45,7 +45,7 @@ Basic Custom Toolset
 
 .. code-block:: python
 
-   from magique.ai.toolset import Toolset
+   from pantheon.toolsets.utils.toolset import Toolset
    
    class MyCustomToolset(Toolset):
        def __init__(self, name="custom_tools"):
@@ -139,7 +139,7 @@ Deploy toolsets as services:
 
 .. code-block:: python
 
-   from magique.ai.toolset import run_toolset_service
+   from pantheon.toolsets.utils.toolset import run_toolset_service
    
    # Create toolset
    toolset = MyCustomToolset()

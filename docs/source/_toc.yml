@@ -1,0 +1,44 @@
+format: jb-book
+root: index
+title: Home
+
+chapters:
+- file: installation
+- file: quickstart  
+- file: concepts
+- file: architecture
+
+- title: Components
+  entries:
+  - file: agent/index
+    sections:
+    - file: agent/agent_api
+    - file: agent/smart_func_api
+    - file: agent/remote_agent
+  - file: team/index
+    sections:
+    - file: team/sequential_team
+    - file: team/moa_team
+    - file: team/swarm_team
+    - file: team/swarm_center_team
+    - file: team/pantheon_team
+  - file: toolsets/index
+    sections:
+    - file: toolsets/python_interpreter
+    - file: toolsets/r_interpreter
+    - file: toolsets/shell
+    - file: toolsets/web_browse
+    - file: toolsets/scraper_api
+    - file: toolsets/file_editor
+    - file: toolsets/vector_rag
+    - file: toolsets/rag_system
+  - file: endpoint_chatroom/index
+    sections:
+    - file: endpoint_chatroom/architecture
+
+- title: Reference
+  entries:
+  - file: api/index
+  - file: guides/index
+  - file: examples/index
+  - file: contributing

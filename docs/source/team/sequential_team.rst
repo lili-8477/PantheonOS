@@ -52,8 +52,8 @@ Enhance agents with specific tools:
 
 .. code-block:: python
 
-   from magique.ai.tools.web_browse import duckduckgo_search
-   from magique.ai.tools.python import PythonInterpreterToolSet
+   from pantheon.toolsets.web_browse import duckduckgo_search
+   from pantheon.toolsets.python import PythonInterpreterToolSet
    
    # Research agent with web search
    researcher = Agent(

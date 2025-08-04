@@ -21,7 +21,7 @@ File Reading and Writing
 
 .. code-block:: python
 
-   from magique.ai.tools.filesystem import read_file, write_file, list_directory
+   from pantheon.toolsets.filesystem import read_file, write_file, list_directory
    from pantheon.agent import Agent
    
    # Create agent with file access
@@ -66,7 +66,7 @@ File Manipulation
 
 .. code-block:: python
 
-   from magique.ai.tools.filesystem import (
+   from pantheon.toolsets.filesystem import (
        read_file, 
        write_file, 
        append_file,
@@ -126,7 +126,7 @@ Safe File Access
 
 .. code-block:: python
 
-   from magique.ai.tools.filesystem import SafeFileSystem
+   from pantheon.toolsets.filesystem import SafeFileSystem
    
    # Configure safe filesystem
    safe_fs = SafeFileSystem(

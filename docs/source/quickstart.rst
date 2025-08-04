@@ -3,6 +3,17 @@ Quick Start
 
 This guide will help you create your first Pantheon agents and teams.
 
+Prerequisites
+-------------
+
+Before running the examples, make sure to set up your API key as an environment variable. For OpenAI models (default):
+
+.. code-block:: bash
+
+   export OPENAI_API_KEY="your-api-key-here"
+
+For other LLM providers, see the model configuration details in the :ref:`Model Selection and Providers <model-selection-providers>` section.
+
 Your First Agent
 ----------------
 
@@ -18,7 +29,7 @@ The simplest way to create an agent:
        agent = Agent(
            name="assistant",
            instructions="You are a helpful assistant.",
-           model="gpt-4o-mini"
+           model="gpt-4.1-mini"
        )
        
        # Chat interactively
@@ -30,92 +41,108 @@ The simplest way to create an agent:
 Adding Tools to Agents
 ----------------------
 
-Agents become more powerful with tools. Here's an example with web search:
+Agents become more powerful with tools. Here's a simple example:
 
 .. code-block:: python
 
    import asyncio
    from pantheon.agent import Agent
-   from magique.ai.tools.web_browse.duckduckgo import duckduckgo_search
-   from magique.ai.tools.web_browse.web_crawl import web_crawl
+   import random
 
    async def main():
-       # Create an agent with web search capabilities
-       search_agent = Agent(
-           name="search_expert",
-           instructions="You are an expert in search engines. "
-                       "You can search the web and crawl websites.",
-           model="gpt-4o-mini",
-           tools=[duckduckgo_search, web_crawl]
+       # Create an agent
+       agent = Agent(
+           name="weather_assistant",
+           instructions="You are a helpful weather assistant.",
+           model="gpt-4.1-mini"
        )
        
-       await search_agent.chat()
+       # Define a custom tool
+       @agent.tool
+       def get_weather(city: str) -> str:
+           """Get the current weather for a city."""
+           # In a real application, this would call a weather API
+           temp = random.randint(60, 85)
+           conditions = random.choice(["sunny", "cloudy", "rainy"])
+           return f"The weather in {city} is {temp}°F and {conditions}."
+       
+       # Define another tool
+       @agent.tool
+       def get_forecast(city: str, days: int = 3) -> str:
+           """Get weather forecast for a city."""
+           return f"The {days}-day forecast for {city} shows mixed conditions."
+       
+       # Chat with the agent - it can now use these tools
+       await agent.chat()
 
    if __name__ == "__main__":
        asyncio.run(main())
 
-Code Execution Agent
---------------------
+Adding Remote Toolsets
+----------------------
 
-Create an agent that can run Python code:
+Agents can use powerful remote toolsets for specialized tasks like code execution:
 
 .. code-block:: python
 
    import asyncio
    from pantheon.agent import Agent
-   from magique.ai.tools.python import PythonInterpreterToolSet
-   from magique.ai.toolset import run_toolsets
+   from pantheon.toolsets.python import PythonInterpreterToolSet
+   from pantheon.toolsets.utils.toolset import run_toolsets
 
    async def main():
+       # Create a Python interpreter toolset
        toolset = PythonInterpreterToolSet("python_interpreter")
        
+       # Start the toolset service
        async with run_toolsets([toolset], log_level="WARNING"):
+           # Create an agent
            agent = Agent(
-               name="coderun_bot",
-               instructions="You are an AI assistant that can run Python code.",
-               model="gpt-4o-mini"
+               name="data_analyst",
+               instructions="You are a data analyst who can run Python code to analyze data.",
+               model="gpt-4.1-mini"
            )
+           
+           # Connect the agent to the remote toolset
            await agent.remote_toolset(toolset.service_id)
+           
+           # Now the agent can execute Python code
            await agent.chat()
 
    if __name__ == "__main__":
        asyncio.run(main())
 
-Creating Agent Teams
---------------------
+**Running Toolsets on Remote Machines:**
 
-Sequential Team
-~~~~~~~~~~~~~~~
+The toolset doesn't have to run in the same process or even on the same machine. You can start a toolset on a remote computer:
 
-Agents work one after another:
+.. code-block:: bash
+
+   # On remote machine (e.g., a GPU server):
+   python -m pantheon.toolsets.python --service-name "gpu-python-env"
+   # Output: Service ID: abc123-def456-...
+
+Then connect from your local machine:
 
 .. code-block:: python
 
-   import asyncio
-   from pantheon.agent import Agent
-   from pantheon.team import SequentialTeam
-
-   # Create specialized agents
-   scifi_fan = Agent(
-       name="scifi_fan",
-       instructions="You are a scifi fan. You like to read scifi books."
+   # On local machine:
+   agent = Agent(
+       name="ml_engineer",
+       instructions="You are an ML engineer who can run Python code on GPU servers.",
+       model="gpt-4.1"
    )
+   
+   # Connect using the service ID from the remote machine
+   await agent.remote_toolset("abc123-def456-...")
+   
+   # The agent can now execute code on the remote GPU server
+   response = await agent.run("Train a simple neural network using PyTorch")
 
-   romance_fan = Agent(
-       name="romance_fan", 
-       instructions="You are a romance fan. You like to read romance books."
-   )
+Creating Agent Teams
+--------------------
 
-   # Create a sequential team
-   team = SequentialTeam([scifi_fan, romance_fan])
-
-   # Run the team
-   asyncio.run(team.chat("Recommend me some books."))
-
-Swarm Team
-~~~~~~~~~~
-
-Agents can transfer control to each other:
+Multiple agents can work together as a team. Here's an example using Swarm Team where agents can dynamically transfer control to each other:
 
 .. code-block:: python
 
@@ -124,34 +151,40 @@ Agents can transfer control to each other:
    from pantheon.team import SwarmTeam
 
    async def main():
-       # Create agents
-       scifi_fan = Agent(
-           name="Scifi Fan",
-           instructions="You are a scifi fan.",
-           model="gpt-4o-mini"
+       # Create specialized agents
+       researcher = Agent(
+           name="Researcher",
+           instructions="You are an expert researcher. You gather and analyze information.",
+           model="gpt-4.1-mini"
        )
        
-       romance_fan = Agent(
-           name="Romance Fan",
-           instructions="You are a romance fan.",
-           model="gpt-4o-mini"
+       writer = Agent(
+           name="Writer",
+           instructions="You are a professional writer. You create clear, engaging content.",
+           model="gpt-4.1-mini"
        )
        
-       # Add transfer functions
-       @scifi_fan.tool
-       def transfer_to_romance_fan():
-           return romance_fan
+       # Add transfer functions so agents can hand off tasks
+       @researcher.tool
+       def transfer_to_writer():
+           """Transfer control to the writer when research is complete."""
+           return writer
        
-       @romance_fan.tool
-       def transfer_to_scifi_fan():
-           return scifi_fan
+       @writer.tool
+       def transfer_to_researcher():
+           """Transfer control to the researcher when more information is needed."""
+           return researcher
        
-       # Create swarm team
-       team = SwarmTeam([scifi_fan, romance_fan])
+       # Create a swarm team
+       team = SwarmTeam([researcher, writer])
+       
+       # Start chatting - agents will collaborate automatically
        await team.chat()
 
    if __name__ == "__main__":
        asyncio.run(main())
+
+For more team types (Sequential, SwarmCenter, MoA), see the :doc:`team/index` documentation.
 
 Creating and Configuring ChatRoom
 ----------------------------------
@@ -188,14 +221,14 @@ Create a YAML configuration file to define your ChatRoom:
    agents:
      - name: "researcher"
        instructions: "You are an expert researcher who can search and analyze information."
-       model: "gpt-4o"
+       model: "gpt-4.1"
        tools:
          - "web_search"
          - "web_crawl"
    
      - name: "writer"
        instructions: "You are a technical writer who creates clear documentation."
-       model: "gpt-4o-mini"
+       model: "gpt-4.1-mini"
    
    team:
      type: "sequential"
@@ -207,79 +240,10 @@ Then start the ChatRoom with your configuration:
 
    python -m pantheon.chatroom --config chatroom_config.yaml
 
-Programmatic ChatRoom Creation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can also create ChatRooms programmatically:
-
-.. code-block:: python
-
-   import asyncio
-   from pantheon.chatroom import ChatRoom
-   from pantheon.agent import Agent
-   from pantheon.team import SequentialTeam
-   
-   async def main():
-       # Create agents
-       researcher = Agent(
-           name="researcher",
-           instructions="You are an expert researcher.",
-           model="gpt-4o"
-       )
-       
-       writer = Agent(
-           name="writer",
-           instructions="You are a technical writer.",
-           model="gpt-4o-mini"
-       )
-       
-       # Create team
-       team = SequentialTeam([researcher, writer])
-       
-       # Create and start ChatRoom
-       chatroom = ChatRoom(
-           name="Research ChatRoom",
-           team=team
-       )
-       
-       await chatroom.start()
-       print(f"ChatRoom started with ID: {chatroom.service_id}")
-       
-       # Keep the chatroom running
-       await asyncio.Event().wait()
-   
-   if __name__ == "__main__":
-       asyncio.run(main())
-
-Custom Tools
-------------
-
-You can create custom tools for agents:
-
-.. code-block:: python
-
-   from pantheon.agent import Agent
-
-   agent = Agent(
-       name="CustomAgent",
-       instructions="You can use custom tools."
-   )
-
-   @agent.tool
-   def calculate_sum(a: int, b: int) -> int:
-       """Calculate the sum of two numbers."""
-       return a + b
-
-   @agent.tool 
-   def get_current_time() -> str:
-       """Get the current time."""
-       from datetime import datetime
-       return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
 Next Steps
 ----------
 
-- Explore more :doc:`examples/index`
-- Learn about :doc:`guides/teams` patterns
-- Understand :doc:`guides/agents` in depth
-- Check out available :doc:`guides/tools`
+1. **Learn Pantheon's core concepts** - :doc:`concepts`
+2. **Understand Pantheon's architecture** - :doc:`architecture`
+3. **Deep dive into components (Agent, Team, Toolsets)** - :doc:`agent/index`, :doc:`team/index`, :doc:`toolsets/index`
+4. **Explore examples** - :doc:`examples/index`

@@ -40,8 +40,8 @@ Adding Existing Tools
 
 .. code-block:: python
 
-   from magique.ai.tools.web_browse.duckduckgo import duckduckgo_search
-   from magique.ai.tools.web_browse.web_crawl import web_crawl
+   from pantheon.toolsets.web_browse.duckduckgo import duckduckgo_search
+   from pantheon.toolsets.web_browse.web_crawl import web_crawl
 
    agent = Agent(
        name="researcher",
@@ -75,8 +75,8 @@ For resource-intensive tools, use remote toolsets:
 
 .. code-block:: python
 
-   from magique.ai.tools.python import PythonInterpreterToolSet
-   from magique.ai.toolset import run_toolsets
+   from pantheon.toolsets.python import PythonInterpreterToolSet
+   from pantheon.toolsets.utils.toolset import run_toolsets
 
    async def setup_agent():
        toolset = PythonInterpreterToolSet("python_interpreter")

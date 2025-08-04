@@ -1,7 +1,7 @@
 import asyncio
 from pantheon.agent import Agent
-from magique.ai.tools.shell import ShellToolSet
-from magique.ai.toolset import run_toolsets
+from pantheon.toolsets.shell import ShellToolSet
+from pantheon.toolsets.utils.toolset import run_toolsets
 
 
 async def main():

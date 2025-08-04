@@ -47,15 +47,19 @@ dev:
 	sphinx-autobuild \
 		--host 127.0.0.1 \
 		--port 8080 \
-		--delay 1 \
+		--delay 0 \
 		--watch "$(SOURCEDIR)" \
+		--watch "../pantheon" \
 		--ignore "*.pyc" \
+		--ignore "*.pyo" \
+		--ignore "__pycache__" \
+		--ignore ".git" \
+		--ignore "$(BUILDDIR)" \
 		--ignore "*.swp" \
 		--ignore "*~" \
-		--ignore "*.git" \
-		--ignore "$(BUILDDIR)/*" \
-		--re-ignore "__pycache__/" \
-		--re-ignore "\.#.*" \
+		--ignore ".DS_Store" \
+		--re-ignore ".*\.#.*" \
+		--re-ignore ".*~$$" \
 		"$(SOURCEDIR)" "$(BUILDDIR)/html" $(SPHINXOPTS) $(O)
 
 .PHONY: install
@@ -86,3 +90,25 @@ watch:
 dev-env:
 	@echo "Starting development server in pantheon-test environment..."
 	@./dev_with_env.sh
+
+.PHONY: dev-watch
+dev-watch:
+	@echo "Starting development server with aggressive file watching..."
+	@echo "This will watch for changes in source/ and ../pantheon/ directories"
+	sphinx-autobuild \
+		--host 127.0.0.1 \
+		--port 8080 \
+		--delay 0 \
+		--poll \
+		--watch "$(SOURCEDIR)" \
+		--watch "../pantheon" \
+		--ignore "*.pyc" \
+		--ignore "*.pyo" \
+		--ignore "__pycache__/*" \
+		--ignore ".git/*" \
+		--ignore "$(BUILDDIR)/*" \
+		--ignore "*.swp" \
+		--ignore "*~" \
+		--ignore ".DS_Store" \
+		--open-browser \
+		"$(SOURCEDIR)" "$(BUILDDIR)/html" $(SPHINXOPTS) $(O)

@@ -9,38 +9,22 @@ System Architecture
 High-Level Overview
 ~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: text
+.. mermaid::
 
-    ┌────────────────────────────────────────────────────────────┐
-    │                        Clients                             │
-    │  (Web UI, Mobile Apps, API Consumers, CLI Tools)          │
-    └────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-    ┌────────────────────────────────────────────────────────────┐
-    │                    API Gateway Layer                       │
-    │  (Authentication, Rate Limiting, Routing, Load Balancing) │
-    └────────────────────────────────────────────────────────────┘
-                                  │
-                    ┌─────────────┴─────────────┐
-                    ▼                           ▼
-    ┌──────────────────────────┐   ┌──────────────────────────┐
-    │   ChatRoom Services      │   │   Agent Endpoints        │
-    │  (Session Management)     │   │  (Individual Agents)     │
-    └──────────────────────────┘   └──────────────────────────┘
-                    │                           │
-                    └─────────────┬─────────────┘
-                                  ▼
-    ┌────────────────────────────────────────────────────────────┐
-    │                    Toolset Services                        │
-    │  (Python, R, Shell, Web, RAG, File Operations)            │
-    └────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-    ┌────────────────────────────────────────────────────────────┐
-    │                    Data Layer                              │
-    │  (Databases, Vector Stores, File Storage, Cache)          │
-    └────────────────────────────────────────────────────────────┘
+   graph TD
+       Clients[Clients<br/>Web UI, Mobile Apps, API Consumers, CLI Tools]
+       Gateway[API Gateway Layer<br/>Authentication, Rate Limiting, Routing, Load Balancing]
+       ChatRoom[ChatRoom Services<br/>Session Management]
+       Agents[Agent Endpoints<br/>Individual Agents]
+       Toolsets[Toolset Services<br/>Python, R, Shell, Web, RAG, File Operations]
+       DataLayer[Data Layer<br/>Databases, Vector Stores, File Storage, Cache]
+       
+       Clients --> Gateway
+       Gateway --> ChatRoom
+       Gateway --> Agents
+       ChatRoom --> Toolsets
+       Agents --> Toolsets
+       Toolsets --> DataLayer
 
 Component Details
 -----------------
@@ -213,19 +197,25 @@ REST API
 
 **Endpoint Structure:**
 
-.. code-block:: text
+.. mermaid::
 
-    /api/v1/
-    ├── agents/
-    │   ├── {agent_id}/run        # POST - Run agent
-    │   ├── {agent_id}/stream     # POST - Stream response
-    │   └── {agent_id}/info       # GET  - Agent information
-    ├── chatrooms/
-    │   ├── create                # POST - Create chatroom
-    │   ├── {room_id}/join        # POST - Join chatroom
-    │   ├── {room_id}/message     # POST - Send message
-    │   └── {room_id}/history     # GET  - Get history
-    └── health                    # GET  - Service health
+   graph LR
+       subgraph "API Endpoints"
+           subgraph "Agents"
+               AgentRun["/agents/{agent_id}/run<br/>POST - Run agent"]
+               AgentStream["/agents/{agent_id}/stream<br/>POST - Stream response"]
+               AgentInfo["/agents/{agent_id}/info<br/>GET - Agent information"]
+           end
+           
+           subgraph "ChatRooms"
+               ChatCreate["/chatrooms/create<br/>POST - Create chatroom"]
+               ChatJoin["/chatrooms/{room_id}/join<br/>POST - Join chatroom"]
+               ChatMessage["/chatrooms/{room_id}/message<br/>POST - Send message"]
+               ChatHistory["/chatrooms/{room_id}/history<br/>GET - Get history"]
+           end
+           
+           Health["/health<br/>GET - Service health"]
+       end
 
 **Request/Response Format:**
 

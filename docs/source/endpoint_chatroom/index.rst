@@ -30,19 +30,21 @@ The service layer provides:
 Architecture Overview
 ---------------------
 
-.. code-block:: text
+.. mermaid::
 
-    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-    │   Web UI    │────▶│  ChatRoom   │────▶│   Agents    │
-    │             │     │   Service   │     │             │
-    └─────────────┘     └─────────────┘     └─────────────┘
-           │                    │                    │
-           │                    │                    │
-           ▼                    ▼                    ▼
-    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-    │   REST API  │     │  WebSocket  │     │  Endpoints  │
-    │             │     │             │     │             │
-    └─────────────┘     └─────────────┘     └─────────────┘
+   graph TD
+       WebUI[Web UI]
+       ChatRoom[ChatRoom Service]
+       Agents[Agents]
+       RestAPI[REST API]
+       WebSocket[WebSocket]
+       Endpoints[Endpoints]
+       
+       WebUI --> ChatRoom
+       ChatRoom --> Agents
+       WebUI --> RestAPI
+       ChatRoom --> WebSocket
+       Agents --> Endpoints
 
 Quick Examples
 --------------

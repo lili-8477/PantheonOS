@@ -26,7 +26,11 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx_copybutton',
     'sphinx_design',
-    'myst_parser',
+    'myst_nb',
+    'sphinx.ext.linkcode',
+    'sphinx_togglebutton',
+    'sphinx_thebe',
+    'sphinxcontrib.mermaid',
 ]
 
 # Use a light syntax highlighting style
@@ -42,27 +46,35 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'furo'
+html_theme = 'sphinx_book_theme'
 html_static_path = ['_static']
 html_title = "Pantheon"
-# Logo configuration
-html_logo = "_static/pantheon.png"
+html_logo = "_static/pantheon.png"  
 html_favicon = "_static/pantheon.png"
 html_css_files = ['custom.css']
+html_js_files = [
+    ('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js', {'loading_method': 'async'}),
+    'mermaid-init.js',
+]
 
-# Furo theme options
+# Sphinx Book Theme options
 html_theme_options = {
-    "light_css_variables": {
-        "color-brand-primary": "#1e88e5",
-        "color-brand-content": "#1976d2",
+    "repository_url": "https://github.com/aristoteleo/pantheon-agents",
+    "use_repository_button": True,
+    "use_edit_page_button": True,
+    "use_source_button": True,
+    "use_issues_button": True,
+    "use_download_button": True,
+    "path_to_docs": "pantheon-agents/docs/source",
+    "repository_branch": "main",
+    "home_page_in_toc": True,
+    "show_navbar_depth": 2,
+    "logo": {
+        "image_light": "_static/pantheon.png",
+        "image_dark": "_static/pantheon.png",
+        "text": "Pantheon",
     },
-    "dark_css_variables": {
-        "color-brand-primary": "#64b5f6",
-        "color-brand-content": "#42a5f5",
-    },
-    "sidebar_hide_name": False,
     "navigation_with_keys": True,
-    "announcement": None,
 }
 
 # -- Extension configuration -------------------------------------------------
@@ -97,7 +109,7 @@ myst_enable_extensions = [
     "amsmath",
     "colon_fence",
     "deflist",
-    "dollarmath",
+    "dollarmath",  
     "fieldlist",
     "html_admonition",
     "html_image",
@@ -109,6 +121,9 @@ myst_enable_extensions = [
     "tasklist",
 ]
 
+# Ensure MyST-NB parses markdown correctly
+myst_update_mathjax = False
+
 # Intersphinx mapping
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
@@ -119,3 +134,33 @@ intersphinx_mapping = {
 # Copy button settings
 copybutton_prompt_text = r">>> |\.\.\. |\$ "
 copybutton_prompt_is_regexp = True
+
+# MyST-NB settings
+nb_execution_mode = "off"
+nb_execution_timeout = 60
+
+# Mermaid settings
+mermaid_version = "10.9.0"
+mermaid_init_js = "mermaid.initialize({startOnLoad:true, theme: 'default'});"
+mermaid_output_format = 'raw'
+mermaid_embed_js = True
+
+# Source suffix
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'myst-nb',
+    '.ipynb': 'myst-nb',
+}
+
+# Source code linking
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    
+    filename = info['module'].replace('.', '/')
+    return f"https://github.com/aristoteleo/pantheon-agents/blob/main/pantheon/{filename}.py"
+
+# Use master_doc for index
+master_doc = 'index'

@@ -21,8 +21,8 @@ Setting Up Shell Toolset
 
 .. code-block:: python
 
-   from magique.ai.tools.shell import ShellToolSet
-   from magique.ai.toolset import run_toolsets
+   from pantheon.toolsets.shell import ShellToolSet
+   from pantheon.toolsets.utils.toolset import run_toolsets
    from pantheon.agent import Agent
    
    async def create_shell_agent():

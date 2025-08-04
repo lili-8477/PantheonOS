@@ -1,242 +1,217 @@
-Project Architecture
-====================
+System Architecture
+===================
 
-Pantheon follows a modular, distributed architecture designed for flexibility, scalability, and ease of use. This document provides an overview of the system's structure and key components.
+Pantheon is a distributed multi-agent AI system that enables developers to build sophisticated AI applications with multiple collaborating agents. The system consists of three main components that work together seamlessly.
 
-System Overview
----------------
+Overview
+--------
 
-.. code-block:: text
+The Pantheon ecosystem is composed of three primary repositories:
 
-    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-    │  pantheon   │     │  pantheon   │     │  pantheon   │
-    │     ui      │────▶│     hub     │────▶│   agents    │
-    │  (Vue.js)   │     │  (FastAPI)  │     │   (Core)    │
-    └─────────────┘     └─────────────┘     └─────────────┘
-           │                    │                    │
-           │                    │                    │
-           ▼                    ▼                    ▼
-    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-    │   Browser   │     │  Database   │     │   LLM APIs  │
-    │  Interface  │     │  (SQLite)   │     │ (OpenAI...)  │
-    └─────────────┘     └─────────────┘     └─────────────┘
+- **pantheon-agents**: Core agent framework and orchestration
+- **pantheon-toolsets**: Distributed toolset system for agent capabilities  
+- **pantheon-interfaces**: User interfaces for interacting with the system
 
-Core Components
----------------
+Component Architecture
+----------------------
 
 pantheon-agents
 ~~~~~~~~~~~~~~~
 
-The foundation of the system, providing:
+Repository: https://github.com/aristoteleo/pantheon-agents
 
-- **Agent Framework**: Base classes and interfaces for creating agents
-- **Team Implementations**: Various team collaboration patterns
-- **Memory Systems**: Persistent storage and retrieval mechanisms
-- **Tool Framework**: Extensible system for agent capabilities
-- **ChatRoom Service**: Interactive session management
+The core framework that provides the foundation for the entire system:
 
-Key modules:
+**Key Components:**
 
-- ``pantheon.agent``: Core agent implementation
-- ``pantheon.team``: Team coordination patterns
-- ``pantheon.memory``: Memory persistence layer
-- ``pantheon.tools``: Built-in toolsets
-- ``pantheon.chatroom``: Service layer for interactions
-- ``pantheon.remote``: Distributed computing support
+- **Agent**: The fundamental building block - AI-powered entities with instructions, memory, and tool capabilities
+- **Memory**: Persistent storage system for maintaining context across interactions
+- **Team**: Multi-agent collaboration patterns (Sequential, Swarm, SwarmCenter, MoA)
+- **PantheonChatroom**: A service layer built on top of Team components that:
+  
+  - Hosts a server to handle frontend requests
+  - Orchestrates multiple agents to complete tasks
+  - Interfaces with Pantheon-UI and Pantheon-Endpoint
+  - Manages session state and conversation history
 
-pantheon-hub
-~~~~~~~~~~~~
+**Architecture:**
 
-Backend API service built with FastAPI:
+.. mermaid::
 
-- **REST API**: HTTP endpoints for all operations
-- **Authentication**: Secure access control
-- **Session Management**: Handle multiple concurrent users
-- **Database Layer**: Persistent storage for configurations
-- **WebSocket Support**: Real-time communication
+   graph TD
+       Chatroom[PantheonChatroom<br/>Service]
+       Team[Team<br/>Orchestrator]
+       Agents[Agents<br/>with Memory]
+       
+       Chatroom --> Team
+       Team --> Agents
 
-Key modules:
-
-- ``pantheon_hub.api``: API endpoint definitions
-- ``pantheon_hub.core``: Core business logic
-- ``pantheon_hub.services``: Service layer implementations
-- ``pantheon_hub.models``: Data models and schemas
-
-pantheon-ui
-~~~~~~~~~~~
-
-Modern web interface using Vue.js 3:
-
-- **Responsive Design**: Works on desktop and mobile
-- **Real-time Updates**: Live streaming of agent responses
-- **Session History**: View and continue past conversations
-- **Configuration UI**: Easy agent and team setup
-- **TypeScript**: Full type safety
-
-Key components:
-
-- ``stores/``: Pinia state management
-- ``components/``: Reusable UI components
-- ``network/``: API client implementation
-- ``views/``: Main application pages
-
-Data Flow
----------
-
-1. **User Interaction**
-   
-   - User sends message via UI
-   - UI calls Hub API endpoint
-   - Hub validates and processes request
-
-2. **Agent Processing**
-   
-   - Hub invokes appropriate agent/team
-   - Agent processes with available tools
-   - Results streamed back through Hub
-
-3. **Response Delivery**
-   
-   - Hub formats agent response
-   - UI receives and displays results
-   - Session state updated
-
-Communication Protocols
------------------------
-
-HTTP REST API
-~~~~~~~~~~~~~
-
-Standard RESTful endpoints for:
-
-- Agent management
-- ChatRoom operations
-- Session handling
-- Configuration
-
-WebSocket
-~~~~~~~~~
-
-Real-time bidirectional communication for:
-
-- Streaming agent responses
-- Live status updates
-- Interactive sessions
-
-Internal RPC
-~~~~~~~~~~~~
-
-For distributed operations:
-
-- Remote agent invocation
-- Tool service communication
-- Cross-process coordination
-
-Storage Architecture
---------------------
-
-Database (SQLite)
+pantheon-toolsets
 ~~~~~~~~~~~~~~~~~
 
-Stores:
+Repository: https://github.com/aristoteleo/pantheon-toolsets
 
-- User sessions
-- Agent configurations
-- ChatRoom metadata
-- System settings
+A distributed toolset system that provides various capabilities to pantheon-agents:
 
-File-based Memory
-~~~~~~~~~~~~~~~~~
+**Built-in Toolsets:**
 
-Persistent storage for:
+- **PythonInterpreter**: Execute Python code in sandboxed environments
+- **RInterpreter**: R language execution for statistical computing
+- **WebBrowse**: Web scraping and browsing capabilities
+- **VectorRAG**: Vector-based retrieval augmented generation
+- **FileManager**: File system operations
+- **Shell**: System command execution
 
-- Conversation history
-- Agent memory states
-- Temporary tool outputs
-- Cache data
+**Endpoint Component:**
 
-Distributed Architecture
-------------------------
+The endpoint is a crucial component that:
 
-Remote Agents
-~~~~~~~~~~~~~
+- Hosts a collection of toolsets as a service
+- Provides backend computational support for PantheonChatroom
+- Enables distributed deployment of resource-intensive tools
+- Manages tool lifecycle and resource allocation
 
-Agents can run on separate machines:
+**Example Endpoint Configuration:**
 
-.. code-block:: python
+.. code-block:: yaml
 
-    # On remote machine
-    agent = Agent(...)
-    await agent.start_service(port=8000)
-    
-    # On main machine
-    remote_agent = RemoteAgent("http://remote-host:8000")
+    # endpoint.yaml
+    name: "compute-endpoint"
+    toolsets:
+      - type: python_interpreter
+        name: "python_compute"
+      - type: r_interpreter
+        name: "r_stats"
+      - type: vector_rag
+        name: "knowledge_base"
 
-Remote Toolsets
-~~~~~~~~~~~~~~~
+pantheon-interfaces
+~~~~~~~~~~~~~~~~~~~
 
-Distribute computational tools:
+User-facing interfaces for interacting with the Pantheon system:
 
-.. code-block:: python
+**pantheon-ui**
 
-    # Tool server
-    toolset = PythonInterpreterToolSet()
-    await toolset.start_service(port=8001)
-    
-    # Agent using remote tool
-    agent.remote_toolset("http://tool-server:8001")
+Repository: https://github.com/aristoteleo/pantheon-ui
 
-Security Considerations
------------------------
+- Web-based frontend interface built with modern frameworks
+- Direct integration with PantheonChatroom
+- Connects users with chatrooms and endpoints
+- Real-time streaming of agent responses
+- Session management and history
 
-- **API Authentication**: Token-based authentication for Hub API
-- **Sandboxed Execution**: Tools run in isolated environments
-- **Input Validation**: All inputs sanitized before processing
-- **Rate Limiting**: Prevent abuse of resources
-- **Audit Logging**: Track all operations for security
+**pantheon-cli** (in pantheon-agents repo)
 
-Deployment Options
+- Command-line interface for developers
+- Direct agent interaction
+- Debugging and testing capabilities
+
+**pantheon-slack** (in pantheon-agents repo)
+
+- Slack bot integration
+- Team collaboration features
+- Notification system
+
+Communication Architecture
+--------------------------
+
+All components communicate through **Magique**, a WebSocket-based communication library:
+
+**Magique Architecture:**
+
+.. mermaid::
+
+   graph LR
+       Client[Client] <-->|WebSocket| Server[Server]
+       Server <-->|WebSocket| Worker[Worker]
+       Client -.->|Request| Worker
+       Worker -.->|Response| Client
+
+- **Server**: Public-facing server accessible over the internet
+- **Client**: Initiates requests and receives responses
+- **Worker**: Processes requests and returns results
+
+**Communication Flows:**
+
+1. **Agent ↔ Toolset**: Agents request tool execution from local or remote toolsets
+2. **Agent ↔ Agent**: Inter-agent communication for team collaboration
+3. **Endpoint ↔ Chatroom**: Endpoints provide computational resources to chatrooms
+4. **Chatroom ↔ UI**: Real-time bidirectional communication with users
+
+System Integration
 ------------------
 
-Local Development
-~~~~~~~~~~~~~~~~~
+.. mermaid::
 
-- Single machine setup
-- All components on localhost
-- SQLite database
-- File-based memory
+   graph TB
+       UI[Pantheon-UI] -->|WebSocket| Chatroom[PantheonChatroom]
+       CLI[Pantheon-CLI] -->|Direct| Chatroom
+       Slack[Pantheon-Slack] -->|API| Chatroom
+       
+       Chatroom -->|Orchestrates| Team[Agent Team]
+       Team -->|Coordinates| Agent1[Agent 1]
+       Team -->|Coordinates| Agent2[Agent 2]
+       Team -->|Coordinates| AgentN[Agent N]
+       
+       Agent1 -->|Magique| Endpoint1[Endpoint 1]
+       Agent2 -->|Magique| Endpoint2[Endpoint 2]
+       
+       Endpoint1 -->|Hosts| Tools1[Toolset Collection]
+       Endpoint2 -->|Hosts| Tools2[Toolset Collection]
+       
+       Agent1 -.->|Memory| Storage[(Memory Storage)]
+       Agent2 -.->|Memory| Storage
+       
+       Chatroom -.->|Sessions| DB[(Database)]
 
-Production Deployment
-~~~~~~~~~~~~~~~~~~~~~
+Deployment Scenarios
+--------------------
 
-- Distributed services
-- Load balancing
-- External database (PostgreSQL)
-- Object storage for memory
-- Container orchestration (K8s)
+**Local Development:**
 
-Cloud Deployment
-~~~~~~~~~~~~~~~~
+.. mermaid::
 
-- Managed services integration
-- Auto-scaling capabilities
-- CDN for UI assets
-- Distributed tracing
+   graph TD
+       subgraph "Single Machine"
+           Chatroom[PantheonChatroom<br/>localhost:8000]
+           Endpoint[Endpoint<br/>localhost:8001]
+           UI[UI<br/>localhost:3000]
+       end
 
-Performance Optimization
-------------------------
+**Distributed Production:**
 
-- **Async Operations**: Non-blocking I/O throughout
-- **Connection Pooling**: Efficient resource usage
-- **Caching Layer**: Reduce redundant operations
-- **Lazy Loading**: Load components on demand
-- **Streaming Responses**: Immediate feedback to users
+.. mermaid::
 
-Monitoring and Observability
-----------------------------
+   graph TD
+       UI[UI Servers<br/>CDN + LB]
+       Chatroom[Chatroom Cluster<br/>Kubernetes]
+       Endpoint1[Endpoint 1<br/>GPU Server]
+       Endpoint2[Endpoint 2<br/>CPU Cluster]
+       
+       UI --> Chatroom
+       Chatroom --> Endpoint1
+       Chatroom --> Endpoint2
 
-- **Structured Logging**: Consistent log formats
-- **Metrics Collection**: Performance tracking
-- **Health Checks**: Service availability monitoring
-- **Distributed Tracing**: Request flow visualization
-- **Error Tracking**: Centralized error management
+Key Design Principles
+---------------------
+
+1. **Modularity**: Each component can be developed and deployed independently
+2. **Scalability**: Horizontal scaling through distributed endpoints
+3. **Flexibility**: Mix and match different agents, tools, and interfaces
+4. **Fault Tolerance**: Components can fail without bringing down the system
+5. **Extensibility**: Easy to add new agents, tools, and interfaces
+
+Example Usage Flow
+------------------
+
+1. User sends a message through Pantheon-UI
+2. UI forwards the request to PantheonChatroom via WebSocket
+3. Chatroom activates the appropriate Team configuration
+4. Team orchestrates multiple Agents to handle the request
+5. Agents request tools from local or remote Endpoints via Magique
+6. Endpoints execute tools and return results
+7. Agents collaborate to formulate a response
+8. Chatroom streams the response back to UI
+9. UI displays the result to the user
+
+This architecture enables building complex AI systems that can scale from simple single-agent applications to sophisticated multi-agent systems with distributed computing capabilities.

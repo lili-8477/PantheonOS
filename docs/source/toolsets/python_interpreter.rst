@@ -22,8 +22,8 @@ Setting Up Python Interpreter
 
 .. code-block:: python
 
-   from magique.ai.tools.python import PythonInterpreterToolSet
-   from magique.ai.toolset import run_toolsets
+   from pantheon.toolsets.python import PythonInterpreterToolSet
+   from pantheon.toolsets.utils.toolset import run_toolsets
    from pantheon.agent import Agent
    
    async def create_python_agent():

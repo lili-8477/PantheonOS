@@ -21,7 +21,7 @@ Setting Up Scraper API
 
 .. code-block:: python
 
-   from magique.ai.tools.scraper import ScraperAPIToolSet
+   from pantheon.toolsets.scraper import ScraperAPIToolSet
    from pantheon.agent import Agent
    
    # Initialize Scraper API toolset

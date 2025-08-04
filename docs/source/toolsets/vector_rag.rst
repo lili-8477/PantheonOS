@@ -21,7 +21,7 @@ Setting Up Vector Store
 
 .. code-block:: python
 
-   from magique.ai.tools.rag import VectorRAGToolSet
+   from pantheon.toolsets.rag import VectorRAGToolSet
    from pantheon.agent import Agent
    
    # Initialize vector store
@@ -82,7 +82,7 @@ Document Processing
 
 .. code-block:: python
 
-   from magique.ai.tools.rag import DocumentProcessor
+   from pantheon.toolsets.rag import DocumentProcessor
    
    # Configure document processing
    processor = DocumentProcessor(
@@ -290,7 +290,7 @@ Reranking
 
 .. code-block:: python
 
-   from magique.ai.tools.rag import Reranker
+   from pantheon.toolsets.rag import Reranker
    
    reranker = Reranker(
        model="cross-encoder/ms-marco-MiniLM-L-12-v2"

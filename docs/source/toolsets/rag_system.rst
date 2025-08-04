@@ -22,7 +22,7 @@ Quick Start
 
 .. code-block:: python
 
-   from magique.ai.tools.rag import AutoRAGSystem
+   from pantheon.toolsets.rag import AutoRAGSystem
    from pantheon.agent import Agent
    
    # Initialize auto-build RAG system

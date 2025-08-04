@@ -21,8 +21,8 @@ Setting Up R Interpreter
 
 .. code-block:: python
 
-   from magique.ai.tools.r import RInterpreterToolSet
-   from magique.ai.toolset import run_toolsets
+   from pantheon.toolsets.r import RInterpreterToolSet
+   from pantheon.toolsets.utils.toolset import run_toolsets
    from pantheon.agent import Agent
    
    async def create_r_agent():

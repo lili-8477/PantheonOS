@@ -1,7 +1,7 @@
 import asyncio
 from pantheon.agent import Agent
-from magique.ai.tools.web_browse.duckduckgo import duckduckgo_search
-from magique.ai.tools.web_browse.web_crawl import web_crawl
+from pantheon.toolsets.web_browse.duckduckgo import duckduckgo_search
+from pantheon.toolsets.web_browse.web_crawl import web_crawl
 
 
 search_engine_expert = Agent(
