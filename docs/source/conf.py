@@ -50,7 +50,7 @@ html_theme = 'sphinx_book_theme'
 html_static_path = ['_static']
 html_title = "Pantheon"
 html_logo = "_static/pantheon.png"  
-html_favicon = "_static/pantheon.png"
+html_favicon = "_static/favicon.ico"
 html_css_files = ['custom.css']
 html_js_files = [
     ('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js', {'loading_method': 'async'}),
