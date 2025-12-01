@@ -331,6 +331,7 @@ class Agent:
         force_litellm: Whether to force using LiteLLM. (default: False)
         max_tool_content_length: The maximum length of the tool content. (default: 100000)
         description: The description of the agent. (default: None)
+        enable_skills: Whether to inject Pantheon Skills guidance into the system prompt. (default: False)
     """
 
     def __init__(
@@ -349,6 +350,7 @@ class Agent:
         max_tool_content_length: int | None = 100000,
         system_prompt_mode: SystemPromptMode | None = None,
         description: str | None = None,
+        enable_skills: bool = False,
     ):
         self.id = uuid4()
         self.name = name
@@ -393,6 +395,7 @@ class Agent:
 
         # System prompt mode
         self.system_prompt_mode = system_prompt_mode
+        self.enable_skills = enable_skills
 
     @staticmethod
     def _filter_messages_by_execution_context(
@@ -691,11 +694,11 @@ class Agent:
         should_inject_context = self._should_inject_context_variables(prefixed_name)
 
         async def _call_agent_wrap(
-                messages: list,
-                system_prompt: str | None = None,
-                model: str | None = None,
-                use_memory: bool = False,
-                ) -> dict:
+            messages: list,
+            system_prompt: str | None = None,
+            model: str | None = None,
+            use_memory: bool = False,
+        ) -> dict:
             if use_memory:
                 memory = self.memory[:-1]
             else:
@@ -1122,6 +1125,7 @@ class Agent:
             plan_mode=self.plan_mode,
             can_delegate=self.can_delegate,
             system_prompt_mode=self.system_prompt_mode,
+            enable_skills=self.enable_skills,
         )
         current_timestamp = time.time()
 
@@ -1443,8 +1447,13 @@ class Agent:
         # ============ Unified message processing: Always detect attachments ============
         async def _process_step_message(step_message: dict):
             # Get execution_context_id from ExecutionContext
-            if exec_context.execution_context_id is not None:
-                step_message["execution_context_id"] = exec_context.execution_context_id
+            if (
+                exec_context.execution_context_id is not None
+                and "execution_context_id" not in step_message
+            ):
+                step_message["execution_context_id"] = (
+                    exec_context.execution_context_id
+                )
 
             await _detect_attachments(step_message)
 
@@ -1458,7 +1467,10 @@ class Agent:
                     logger.error(f"Error in process_step_message: {e}")
 
         async def _process_chunk(chunk: dict):
-            if exec_context.execution_context_id is not None:
+            if (
+                exec_context.execution_context_id is not None
+                and "execution_context_id" not in chunk
+            ):
                 chunk["execution_context_id"] = exec_context.execution_context_id
             if process_chunk is not None:
                 try:
