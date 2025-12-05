@@ -10,6 +10,7 @@ from .notebook import IntegratedNotebookToolSet, JupyterKernelToolSet
 from .scraper import ScraperToolSet
 from .todolist import TodoListToolSet
 from .plan_mode import PlanModeToolSet
+from .package import PackageToolSet
 from .vector_rag import VectorRAGToolSet
 from .database_api import DatabaseAPIQueryToolSet
 
@@ -29,6 +30,7 @@ __all__ = [
     "WorkflowToolSet",
     "TodoListToolSet",
     "PlanModeToolSet",
+    "PackageToolSet",
     # Notebooks
     "JupyterKernelToolSet",
     "IntegratedNotebookToolSet",
