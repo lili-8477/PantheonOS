@@ -226,7 +226,7 @@ class TemplateManager:
             team_files = (
                 [
                     {"id": tmpl.id, "name": tmpl.name, "path": f"teams/{tmpl.id}.md"}
-                    for tmpl in self.list_templates()
+                    for tmpl in self.file_manager.list_teams(resolve_refs=False)
                 ]
                 if file_type in {"teams", "all"}
                 else []
@@ -277,7 +277,7 @@ class TemplateManager:
             file_type, template_id = self._parse_template_file_path(file_path)
 
             if file_type == "teams":
-                team = self.get_template(template_id)
+                team = self.file_manager.read_team(template_id, resolve_refs=False)
                 if not team:
                     return {
                         "success": False,

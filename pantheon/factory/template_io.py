@@ -705,6 +705,8 @@ class UnifiedMarkdownParser:
         if team.agents:
             metadata["agents"] = [agent.id for agent in team.agents]
             for agent in team.agents:
+                if not agent.model:  # Reference - skip metadata, only include in agents list
+                    continue
                 agent_meta: Dict[str, Any] = {
                     "id": agent.id,
                     "name": agent.name,
