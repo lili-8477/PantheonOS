@@ -244,6 +244,8 @@ class FileManagerToolSet(FileManagerToolSetBase):
     ) -> dict:
         """Write text to a file with optional overwrite control.
 
+        Automatically creates parent directories if they do not exist.
+
         Args:
             file_path: The path to the file to write.
             content: The content to write to the file.
@@ -262,8 +264,7 @@ class FileManagerToolSet(FileManagerToolSetBase):
             }
 
         try:
-            if not target_path.parent.exists():
-                target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             with open(target_path, "w", encoding="utf-8") as f:
                 f.write(content)
             return {"success": True, "overwritten": overwrite}

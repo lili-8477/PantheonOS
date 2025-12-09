@@ -205,7 +205,12 @@ class Repl(ReplUI):
         """Setup simple input system with readline history."""
         if READLINE_AVAILABLE:
             if self.history_file.exists():
-                readline.read_history_file(str(self.history_file))
+                try:
+                    readline.read_history_file(str(self.history_file))
+                except (OSError, FileNotFoundError):
+                    # Ignore errors from empty/corrupted/missing history files
+                    # (macOS libedit can throw EINVAL on empty files)
+                    pass
             atexit.register(readline.write_history_file, str(self.history_file))
             readline.set_history_length(1000)
             readline.parse_and_bind("tab: complete")
