@@ -237,17 +237,22 @@ class ReplUI:
             if hasattr(agent, 'models') and agent.models:
                 model = agent.models[0] if isinstance(agent.models, list) else agent.models
                 self.console.print(f"[dim]  • [bold]{model}[/bold][/dim]")
+            # Also show description for single agent
+            if hasattr(agent, 'description') and agent.description:
+                self.console.print(f"[dim]  • {agent.description}[/dim]")
         else:
             # Multi-agent mode - show full team
             self.console.print("[dim][bold blue]-- TEAM -------------------------------------------------------------[/bold blue][/dim]")
             self.console.print()
             for agent in team.agents.values():
                 agent_info = f"  - [bright_blue]{agent.name}[/bright_blue]"
+                # Show description first (more important)
+                if hasattr(agent, 'description') and agent.description:
+                    agent_info += f"\n    [dim]{agent.description}[/dim]"
+                # Show model as secondary info
                 if hasattr(agent, 'models') and agent.models:
                     model = agent.models[0] if isinstance(agent.models, list) else agent.models
-                    agent_info += f"\n    - [dim]{model}[/dim]"
-                if hasattr(agent, 'description') and agent.description:
-                    agent_info += f"\n    - [dim]{agent.description}[/dim]"
+                    agent_info += f"\n    [dim]({model})[/dim]"
                 self.console.print(agent_info)
         self.console.print()
 

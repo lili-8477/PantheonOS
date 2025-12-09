@@ -9,11 +9,15 @@ Usage:
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
 import fire
 from dotenv import load_dotenv
+
+# Capture original working directory BEFORE any changes
+_ORIGINAL_CWD = os.getcwd()
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,7 +25,6 @@ load_dotenv()
 # Enable UTF-8 mode on Windows for fancy Unicode characters
 if sys.platform == "win32":
     try:
-        import os
         # Set console to UTF-8 mode
         os.system("chcp 65001 > nul 2>&1")
         # Also set environment variable for Python
@@ -74,6 +77,11 @@ async def _start_async(
     logger.remove()
     logger.add(sys.stderr, level=log_level)
 
+    # Use original CWD as workspace if not specified
+    # This ensures file operations work relative to user's launch directory
+    if workspace is None:
+        workspace = _ORIGINAL_CWD
+
     from .core import Repl
     from ..chatroom import ChatRoom
 
@@ -112,9 +120,15 @@ async def _start_async(
             chat_id=chat_id,
         )
     else:
-        # Default: auto-create everything
-        repl = Repl(
+        # Default: auto-create everything with workspace set to original CWD
+        chatroom = ChatRoom(
+            endpoint=None,
             memory_dir=memory_dir,
+            workspace_path=workspace,
+            enable_nats_streaming=False,
+        )
+        repl = Repl(
+            chatroom=chatroom,
             chat_id=chat_id,
         )
 
