@@ -192,7 +192,7 @@ class FileManagerToolSetBase(ToolSet):
             if not target_path.exists():
                 return {"success": False, "error": "Target directory does not exist"}
 
-            return _list_tree(target_path, 0)
+            return {"success": True, "tree": _list_tree(target_path, 0)}
 
 
     @tool

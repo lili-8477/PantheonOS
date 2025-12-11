@@ -723,16 +723,96 @@ class ReplUI:
             if result.get('success'):
                 return
 
-        # Simple rendering for unhandled tools
-        if isinstance(result, dict):
-            if result.get("success"):
-                self.console.print("[green]✓[/green] Success")
-            output = result.get("output") or result.get("result")
-            if output:
-                output_str = str(output)
-                if len(output_str) > 200:
-                    output_str = output_str[:200] + "..."
-                self.console.print(f"  ⎿  {output_str}")
+        if not isinstance(result, dict):
+            self.console.print(f"  | {result}")
+            return
+
+        # Print success status
+        if result.get("success"):
+            self.console.print("[green]✓[/green] Success")
+
+        # Try standard output fields first
+        output = result.get("output") or result.get("result")
+        if output:
+            output_str = str(output)
+            if len(output_str) > 200:
+                output_str = output_str[:200] + "..."
+            self.console.print(f"  ⎿  {output_str}")
+            return
+
+        # Generic rendering for other fields
+        skip_keys = {"success", "error", "metadata", "timestamp", "output", "result"}
+        for key, value in result.items():
+            if key in skip_keys or value is None:
+                continue
+            self._render_fallback_field(key, value)
+
+    def _render_fallback_field(self, key: str, value):
+        """Render a single field in fallback mode"""
+        if isinstance(value, list):
+            # List: show count and first few items
+            count = len(value)
+            self.console.print(f"  [dim]{key}[/dim] ({count} items):")
+            # Show first 5 items
+            for i, item in enumerate(value[:5]):
+                item_str = self._format_list_item(item)
+                self.console.print(f"    {item_str}")
+            if count > 5:
+                self.console.print(f"    [dim]... +{count - 5} more[/dim]")
+        elif isinstance(value, dict):
+            # Dict: show as key-value pairs
+            self.console.print(f"  [dim]{key}[/dim]:")
+            for k, v in list(value.items())[:5]:
+                v_str = str(v)
+                if len(v_str) > 50:
+                    v_str = v_str[:50] + "..."
+                self.console.print(f"    {k}: {v_str}")
+            if len(value) > 5:
+                self.console.print(f"    [dim]... +{len(value) - 5} more[/dim]")
+        else:
+            # String/number: display directly
+            value_str = str(value)
+            if len(value_str) > 100:
+                value_str = value_str[:100] + "..."
+            self.console.print(f"  [dim]{key}:[/dim] {value_str}")
+
+    def _format_list_item(self, item) -> str:
+        """Format a list item for display"""
+        if isinstance(item, dict):
+            # For file entries: show name and type
+            name = item.get("name", "")
+            item_type = item.get("type", "")
+            size = item.get("size", 0)
+            if name:
+                if item_type == "directory":
+                    return f"[blue]{name}/[/blue]"
+                elif item_type == "file":
+                    size_str = self._format_size(size) if size else ""
+                    return f"{name} [dim]({size_str})[/dim]" if size_str else name
+                else:
+                    return name
+            # Generic dict: show first few keys
+            keys = list(item.keys())[:3]
+            preview = ", ".join(f"{k}={item[k]}" for k in keys)
+            if len(preview) > 60:
+                preview = preview[:60] + "..."
+            return f"{{{preview}}}"
+        else:
+            item_str = str(item)
+            if len(item_str) > 60:
+                item_str = item_str[:60] + "..."
+            return item_str
+
+    def _format_size(self, size: int) -> str:
+        """Format file size in human readable format"""
+        if size < 1024:
+            return f"{size}B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f}KB"
+        elif size < 1024 * 1024 * 1024:
+            return f"{size / (1024 * 1024):.1f}MB"
+        else:
+            return f"{size / (1024 * 1024 * 1024):.1f}GB"
 
     async def print_message(self):
         """Enhanced message handler with Claude Code style formatting"""

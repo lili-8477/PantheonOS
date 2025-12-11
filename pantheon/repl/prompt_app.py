@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Optional
 
 from prompt_toolkit import Application
 from prompt_toolkit.layout import Layout, HSplit, FloatContainer, Float, DynamicContainer, ConditionalContainer
+from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.widgets import TextArea
 from prompt_toolkit.layout.containers import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
@@ -122,9 +123,24 @@ def create_key_bindings(app_instance: "PantheonInputApp") -> KeyBindings:
     @kb.add('c-c')
     def _(event):
         """Ctrl+C to clear/cancel or exit."""
-        # Clean current input buffer first
+        # Calculate how many extra lines need to be cleared
+        prev_lines = app_instance._prev_line_count
+
+        # Reset state first
+        app_instance._prev_line_count = 1
+
+        # Clean current input buffer
         event.current_buffer.text = ""
-        
+
+        # Force complete re-render by resetting renderer state
+        try:
+            renderer = event.app.renderer
+            # Reset the renderer's height tracking
+            renderer.reset()
+            event.app.invalidate()
+        except Exception:
+            pass
+
         # Check if we should exit (double press check via repl)
         repl = app_instance.repl
         if hasattr(repl, 'handle_interrupt'):
@@ -238,8 +254,31 @@ class PantheonInputApp:
             focusable=True,
             style="class:input-area",
             prompt='> ',
-            height=None, # Dynamic height
+            height=Dimension(min=1, max=10),  # Dynamic height, 1-10 lines
         )
+
+        # Track line count for dynamic height adjustment
+        self._prev_line_count = 1
+
+        def on_text_changed(buffer):
+            """Handle text changes - force redraw when lines decrease."""
+            if not hasattr(self, 'app'):
+                return
+
+            # Calculate current line count (capped at max height)
+            current_lines = min(buffer.text.count('\n') + 1, 10)
+
+            if current_lines < self._prev_line_count:
+                # Lines decreased - erase and request full redraw
+                try:
+                    self.app.renderer.erase()
+                except Exception:
+                    pass
+
+            self._prev_line_count = current_lines
+            self.app.invalidate()
+
+        self.text_area.buffer.on_text_changed += on_text_changed
         
         # Key bindings
         self.kb = create_key_bindings(self)
