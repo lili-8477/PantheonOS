@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import inspect
 import json
@@ -65,9 +66,9 @@ async def run_func(func: Callable, *args, **kwargs):
     # Check if it's a callable object with async __call__ method
     elif hasattr(func, "__call__") and inspect.iscoroutinefunction(func.__call__):
         return await func(*args, **kwargs)
-    # Regular synchronous function or callable
+    # Regular synchronous function or callable - run in thread pool to avoid blocking event loop
     else:
-        return func(*args, **kwargs)
+        return await asyncio.to_thread(func, *args, **kwargs)
 
 
 def _parse_docstring_args(docstring: str | None) -> dict[str, str]:

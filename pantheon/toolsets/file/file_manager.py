@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -1090,7 +1091,9 @@ class FileManagerToolSet(FileManagerToolSetBase):
             # Include gitignored files
             await glob("**/*.log", respect_git_ignore=False)
         """
-        return glob_search(
+        # Run in thread pool to avoid blocking event loop
+        return await asyncio.to_thread(
+            glob_search,
             pattern=pattern,
             workspace_root=self.path,
             path=path,
@@ -1188,7 +1191,9 @@ class FileManagerToolSet(FileManagerToolSetBase):
             # Search in node_modules (gitignored directory)
             await grep("version.*1.2.3", path="node_modules", respect_git_ignore=False)
         """
-        return grep_search(
+        # Run in thread pool to avoid blocking event loop
+        return await asyncio.to_thread(
+            grep_search,
             pattern=pattern,
             workspace_root=self.path,
             path=path,

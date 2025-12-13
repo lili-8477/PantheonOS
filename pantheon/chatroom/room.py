@@ -131,6 +131,9 @@ class ChatRoom(ToolSet):
         # Default team (bypasses template system when set)
         self._default_team = default_team
 
+        # Background tasks management (for non-blocking operations like chat renaming)
+        self._background_tasks: set[asyncio.Task] = set()
+
     async def _get_endpoint_service(self):
         """Get endpoint service object (instance or RemoteService)."""
         if self._endpoint_embed:
@@ -760,6 +763,25 @@ class ChatRoom(ToolSet):
             await asyncio.sleep(time_delta)
         return {"success": True, "message": "Hooks attached successfully"}
 
+    async def _background_rename_chat(self, memory):
+        """Background task to rename chat without blocking main flow.
+
+        This runs asynchronously after chat() returns, so the user doesn't
+        experience any delay from the LLM call for name generation.
+        """
+        try:
+            from .special_agents import get_chat_name_generator
+
+            chat_name_generator = get_chat_name_generator()
+            new_name = await chat_name_generator.generate_or_update_name(memory)
+            if new_name and new_name != memory.name:
+                memory.name = new_name
+                # Save memory with updated name
+                await run_func(self.memory_manager.save)
+                logger.debug(f"Chat renamed in background to: {new_name}")
+        except Exception as e:
+            logger.error(f"Background chat rename failed: {e}")
+
     @tool
     async def chat(
         self,
@@ -820,14 +842,11 @@ class ChatRoom(ToolSet):
         try:
             await thread.run()
 
-            # Generate or update chat name after conversation
-            try:
-                from .special_agents import get_chat_name_generator
-
-                chat_name_generator = get_chat_name_generator()
-                memory.name = await chat_name_generator.generate_or_update_name(memory)
-            except Exception as e:
-                logger.error(f"Failed to generate/update chat name: {e}")
+            # Generate or update chat name in background (non-blocking)
+            # This prevents UI lag from the LLM call for name generation
+            task = asyncio.create_task(self._background_rename_chat(memory))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
             # Publish chat finished message if NATS streaming enabled
             if self._nats_adapter is not None:

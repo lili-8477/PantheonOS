@@ -358,9 +358,10 @@ class PantheonInputApp:
         # Status information
         self._model_name = ""
         self._current_agent = ""
-        self._status_text = "Ready"
+        self._status_text = "ready"
         self._is_processing = False
         self._start_time = 0
+        self._processing_start_time = 0  # For real-time animation calculation
         self._input_tokens = 0
         self._output_tokens = 0
         self._refresh_task = None
@@ -494,8 +495,8 @@ class PantheonInputApp:
             style=self.style,
             key_bindings=self.kb,
             mouse_support=False, # Disable mouse support to allow terminal scrolling
-            full_screen=False, 
-            refresh_interval=0.5,
+            full_screen=False,
+            refresh_interval=0.125,  # 8 fps for smooth animation
         )
     
     def _create_horizontal_line(self, char: str = '─', style: str = 'fg:ansiblue'):
@@ -582,6 +583,18 @@ class PantheonInputApp:
     
     def get_processing_formatted_text(self) -> HTML:
         """Generate processing status line content (above input) with wave animation."""
+        # Always use real-time calculation for smooth animation
+        # This avoids visual "jumps" when switching between real-time and external updates
+        if self._processing_start_time > 0:
+            elapsed = time.time() - self._processing_start_time
+            spinner_idx = int(elapsed * 8) % len(self.SPINNER_FRAMES)
+            spinner = self.SPINNER_FRAMES[spinner_idx]
+            wave_offset = int(elapsed * 4)
+        else:
+            spinner = self.SPINNER_FRAMES[0]
+            wave_offset = 0
+            elapsed = 0.0
+
         # Create wave text
         wave_text_parts = []
         clean_status = self._status_text
@@ -591,7 +604,7 @@ class PantheonInputApp:
             if char.isspace():
                 wave_text_parts.append(char)
                 continue
-            color = get_wave_color(i, self._wave_offset)
+            color = get_wave_color(i, wave_offset)
             wave_text_parts.append(f'<style fg="{color}">{char}</style>')
 
         wave_html = "".join(wave_text_parts)
@@ -603,8 +616,8 @@ class PantheonInputApp:
             token_info = ""
 
         return HTML(
-            f"{self._current_spinner} {wave_html} {token_info}"
-            f"{self._separator} {self._current_elapsed:.1f}s "
+            f"{spinner} {wave_html} {token_info}"
+            f"{self._separator} {elapsed:.1f}s "
             f'{self._separator} <style fg="#888888">[Esc] cancel</style>'
         )
 
@@ -613,7 +626,7 @@ class PantheonInputApp:
         usage_display = f"ctx: {self._token_usage_pct:.0f}%" if self._token_usage_pct > 0 else "ctx: 0%"
         if self._total_cost and self._total_cost > 0:
             usage_display += f" │ cost: ${self._total_cost:.4f}"
-        status = "Processing..." if self._is_processing else "Ready"
+        status = "processing..." if self._is_processing else "ready"
         
         return HTML(
             f'<style fg="#666666">⏺ {self._model_name} │ agent: {self._current_agent} │ {usage_display} │ {status}</style>'
@@ -624,10 +637,11 @@ class PantheonInputApp:
         self._is_processing = True
         self._input_tokens = input_tokens
         self._output_tokens = 0
+        self._processing_start_time = time.time()  # Record start time for animation
         self._current_elapsed = 0.0
         self._current_spinner = self.SPINNER_FRAMES[0]
         self._wave_offset = 0
-        self._status_text = "Processing..."
+        self._status_text = "processing..."
         self.app.invalidate()
     
     def update_processing(
@@ -663,7 +677,14 @@ class PantheonInputApp:
     def stop_processing(self):
         """Mark processing complete."""
         self._is_processing = False
-        self._status_text = "Ready"
+        self._processing_start_time = 0  # Reset for next processing
+        self._current_elapsed = 0.0
+        self._status_text = "ready"
+        # Force renderer reset to clear processing status line space
+        try:
+            self.app.renderer.erase()
+        except Exception:
+            pass
         self.app.invalidate()
     
     def update_model(self, model_name: str):

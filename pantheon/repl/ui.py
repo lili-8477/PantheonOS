@@ -579,10 +579,20 @@ class ReplUI:
         duration_mins = int(session_duration.total_seconds() / 60)
 
         if self.message_count > 0:
+            # Get accurate token stats from chatroom (same source as status bar)
+            chatroom = getattr(self, '_chatroom', None)
+            chat_id = getattr(self, '_chat_id', None)
+            team = getattr(self, '_team', None)
+
+            token_info = get_token_stats(chatroom, chat_id, team, {})
+            total_tokens = token_info.get("total", 0)
+            total_cost = token_info.get("total_cost", 0)
+
             summary = f"Session: {self.message_count} messages in {duration_mins}m"
-            total_tokens = self.total_input_tokens + self.total_output_tokens
             if total_tokens > 0:
                 summary += f" • {self._format_token_count(total_tokens)} tokens"
+            if total_cost and total_cost > 0:
+                summary += f" • ${total_cost:.4f}"
             self.console.print(f"\n[dim]{summary}[/dim]")
         self.console.print("[dim]Goodbye![/dim]")
 
@@ -719,7 +729,7 @@ class ReplUI:
     def _print_tool_result_fallback(self, tool_name: str, result: dict):
         """Fallback result rendering for unhandled tools"""
         # Skip tools that handle their own output
-        skip_tools = ['edit', 'glob', 'grep', 'ls', 'notebook', 'update_todo_status',
+        skip_tools = ['edit', 'notebook', 'update_todo_status',
                      'add_todo', 'mark_task_done', 'complete_current_todo', 'work_on_next_todo']
         if any(tool in tool_name.lower() for tool in skip_tools) and isinstance(result, dict):
             if result.get('success'):

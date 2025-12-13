@@ -13,6 +13,14 @@ from rich.text import Text
 from rich.live import Live
 from rich.markdown import Markdown
 
+# Pre-import heavy modules to avoid first-call lag
+# These modules have significant import time that would block the event loop
+try:
+    import openai  # noqa: F401
+    import litellm  # noqa: F401
+except ImportError:
+    pass  # Optional dependencies
+
 # prompt_toolkit for enhanced input
 from prompt_toolkit.patch_stdout import patch_stdout
 
@@ -259,7 +267,9 @@ class Repl(ReplUI):
                 # Process message
                 if self.prompt_app:
                     self.prompt_app.start_processing(self._estimate_tokens(current_message))
-                
+                    # Yield to event loop to let prompt_toolkit render first frame
+                    await asyncio.sleep(0)
+
                 try:
                     # Reuse existing logic to process command or chat
                     # We need to adapt the command handling logic from run() to here
@@ -716,6 +726,9 @@ class Repl(ReplUI):
 
     async def _process_message(self, message: str):
         """Process a message through ChatRoom."""
+        # Yield early to let prompt_toolkit render processing state
+        await asyncio.sleep(0)
+
         start_time = time.time()
 
         # Estimate input tokens
@@ -789,7 +802,7 @@ class Repl(ReplUI):
                         self.task_ui_renderer.advance_spinner()
 
                     # Update Prompt App Status Bar with animation state
-                    status_str = f"{'Running ' + format_tool_name(self._current_tool_name) + '...' if (self._current_tool_name and self._tools_executing) else 'Processing...'}"
+                    status_str = f"{'running ' + format_tool_name(self._current_tool_name) + '...' if (self._current_tool_name and self._tools_executing) else 'processing...'}"
                     self.prompt_app.update_processing(
                         status=status_str,
                         output_tokens=current_output_tokens,
@@ -814,10 +827,10 @@ class Repl(ReplUI):
 
                     if self._current_tool_name and self._tools_executing:
                         display_name = format_tool_name(self._current_tool_name)
-                        wave_text = create_wave_text(f"Running {display_name}...", wave_offset)
+                        wave_text = create_wave_text(f"running {display_name}...", wave_offset)
                         status_text = f"[dim]{current_frame}[/dim] {agent_prefix}{wave_text} {token_info}"
                     else:
-                        wave_text = create_wave_text("Processing...", wave_offset)
+                        wave_text = create_wave_text("processing...", wave_offset)
                         status_text = f"[dim]{current_frame}[/dim] {agent_prefix}{wave_text} {token_info}"
     
                     if elapsed > 1:
@@ -863,13 +876,13 @@ class Repl(ReplUI):
                             # Print agent name before each response (multi-agent mode)
                             if agent_name and self._is_multi_agent:
                                 self.console.print(
-                                    f"\n[dim]→[/dim] [bold cyan]{agent_name}[/bold cyan]"
+                                    f"[dim]→[/dim] [bold cyan]{agent_name}[/bold cyan]"
                                 )
                             self.console.print()
                             try:
-                                self.console.print(Markdown(assistant_content))
+                                self.console.print(Markdown(assistant_content.strip()))
                             except Exception:
-                                self.console.print(assistant_content)
+                                self.console.print(assistant_content.strip())
                             self.console.print()
                             if not self.prompt_app:
                                 processing_live.start()
@@ -963,10 +976,6 @@ class Repl(ReplUI):
                 animation_thread = threading.Thread(target=animation_thread_func, daemon=True)
                 animation_thread.start()
 
-                # Yield to event loop to allow initial animation frame to render
-                # This prevents "start freeze" if backend init is synchronous/heavy
-                await asyncio.sleep(0.1)
-
                 # Build message - check for @image: attachments
                 chat_message = self._build_chat_message(message)
 
@@ -981,6 +990,9 @@ class Repl(ReplUI):
                 )
 
                 self._current_agent_task = chat_task
+
+                # Yield to event loop to let prompt_toolkit refresh before blocking on chat
+                await asyncio.sleep(0)
 
                 try:
                     result = await chat_task
@@ -1050,19 +1062,19 @@ class Repl(ReplUI):
                 processing_live.stop()
 
         # Print final content with agent label (multi-agent mode)
-        self.console.print()
+        # Only print if there's content (buffer may have been cleared during streaming)
         if content_buffer:
             full_content = "".join(content_buffer)
             if full_content.strip():
                 # Show agent label before final response (multi-agent mode)
                 if self._is_multi_agent and self._current_agent_name:
                     self.console.print(f"[dim]→[/dim] [bold cyan]{self._current_agent_name}[/bold cyan]")
+                    self.console.print()
                 try:
-                    self.console.print(Markdown(full_content))
+                    self.console.print(Markdown(full_content.strip()))
                 except Exception:
-                    self.console.print(full_content)
-
-        self.console.print()
+                    self.console.print(full_content.lstrip('\n'))
+                self.console.print()
 
     # ===== Chat management commands =====
 
