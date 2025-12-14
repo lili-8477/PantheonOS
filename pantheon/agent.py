@@ -621,6 +621,60 @@ class Agent:
 
         return False
 
+    def _prepare_context_variables(
+        self,
+        prefixed_name: str,
+        args: dict,
+        context_variables: dict | None,
+        tool_call_id: str | None,
+    ) -> dict:
+        """Inject context_variables into args if needed."""
+        should_inject = self._should_inject_context_variables(prefixed_name)
+
+        if not should_inject or context_variables is None:
+            return args
+
+        # Create _call_agent callback
+        async def _call_agent_wrap(
+            messages: list,
+            system_prompt: str | None = None,
+            model: str | None = None,
+            use_memory: bool = False,
+        ) -> dict:
+            memory = self.memory[:-1] if use_memory else None
+            return await _call_agent(
+                messages=messages,
+                system_prompt=system_prompt,
+                model=model,
+                memory=memory,
+            )
+
+        # Build complete context_variables with execution metadata
+        full_context = context_variables.copy()
+        full_context["agent_name"] = self.name
+        if tool_call_id is not None:
+            full_context["tool_call_id"] = tool_call_id
+        full_context["_call_agent"] = _call_agent_wrap
+
+        # Remove debug call_* variables
+        for k in list(full_context.keys()):
+            if k.startswith("call_"):
+                del full_context[k]
+
+        # Merge with existing context_variables in args
+        if _CTX_VARS_NAME in args:
+            existing = args[_CTX_VARS_NAME]
+            if isinstance(existing, dict):
+                merged = dict(existing)
+                merged.update(full_context)
+                args[_CTX_VARS_NAME] = merged
+            else:
+                args[_CTX_VARS_NAME] = full_context
+        else:
+            args[_CTX_VARS_NAME] = full_context
+
+        return args
+
     async def call_tool(
         self,
         prefixed_name: str,
@@ -628,123 +682,65 @@ class Agent:
         context_variables: dict | None = None,
         tool_call_id: str | None = None,
     ) -> Any:
-        """Call a tool by prefixed name, with conditional context_variables injection.
-
-        Only injects context_variables for:
-        1. ToolSet base functions (has _is_tool attribute)
-        2. ToolSetProvider calls
-        3. Functions that explicitly declare context_variables parameter
-
-        Tool routing order:
-        1. Agent's own _base_functions (unprefixed)
-        2. Provider tools with prefix format: {provider_name}__{tool_name}
-           Uses __ (double underscore) as separator to support provider names with underscores
-
-        Args:
-            prefixed_name: Tool name (possibly with prefix)
-            args: Arguments to pass to the tool
-            context_variables: Context variables to conditionally inject
-
-        Returns:
-            Result from the tool call
-
-        Raises:
-            ValueError: If tool not found in any source
-        """
-        # Determine if we should inject context_variables
-        should_inject_context = self._should_inject_context_variables(prefixed_name)
-
-        async def _call_agent_wrap(
-            messages: list,
-            system_prompt: str | None = None,
-            model: str | None = None,
-            use_memory: bool = False,
-        ) -> dict:
-            if use_memory:
-                memory = self.memory[:-1]
-            else:
-                memory = None
-            res = await _call_agent(
-                messages=messages,
-                system_prompt=system_prompt,
-                model=model,
-                memory=memory,
-            )
-            return res
-
-        # Only inject context_variables if needed
-        if should_inject_context and context_variables is not None:
-            # Build complete context_variables with execution metadata
-            full_context_variables = context_variables.copy()
-            full_context_variables["agent_name"] = self.name
-            if tool_call_id is not None:
-                full_context_variables["tool_call_id"] = tool_call_id
-            # add _call_agent callback
-            full_context_variables["_call_agent"] = _call_agent_wrap
-            # remove call_* variables injected for debug
-            for k in list(full_context_variables.keys()):
-                if k.startswith("call_"):
-                    del full_context_variables[k]
-            # Merge with any existing context_variables in args
-            if _CTX_VARS_NAME in args:
-                existing = args[_CTX_VARS_NAME]
-                if isinstance(existing, dict):
-                    merged = dict(existing)
-                    merged.update(full_context_variables)
-                    args[_CTX_VARS_NAME] = merged
-                else:
-                    args[_CTX_VARS_NAME] = full_context_variables
-            else:
-                args[_CTX_VARS_NAME] = full_context_variables
+        """Call a tool by name with automatic routing and suffix matching fallback."""
+        # Prepare context_variables if needed
+        args = self._prepare_context_variables(
+            prefixed_name, args, context_variables, tool_call_id
+        )
 
         # print shrinked args
         short_args = f"{args}"[:100]
         logger.info(f"Calling tool {prefixed_name} | {short_args}")
-        # 1. Try Agent's own _base_functions first (no prefix required)
-        if prefixed_name in self._base_functions:
-            func = self._base_functions[prefixed_name]
+        # 1. Collect all available tool names
+        all_tools: dict[str, str] = {}  # tool_name -> source ("base" or provider_name)
+        for name in self._base_functions.keys():
+            all_tools[name] = "base"
+        for provider_name, provider in self.providers.items():
             try:
-                # Unpack args dict as keyword arguments to the function
-                result = await run_func(func, **args)
-            except TypeError as e:
-                logger.error(
-                    f"Failed to call tool '{prefixed_name}': {e}\n"
-                    f"  Function: {func}\n"
-                    f"  Arguments: {args}\n"
-                )
-                raise
-        else:
-            # 2. Try prefix-based routing: {provider_name}__{tool_name}
-            # Using __ (double underscore) as separator allows provider names to contain single underscores
-            if "__" not in prefixed_name:
-                raise ValueError(
-                    f"Tool '{prefixed_name}' not found in _base_functions or providers (no provider prefix)"
-                )
-
-            # Split on first __ only (tool_name may contain underscores)
-            source, tool_name = prefixed_name.split("__", 1)
-
-            if source not in self.providers:
-                raise ValueError(
-                    f"Provider '{source}' not found (tool: '{prefixed_name}')"
-                )
-
-            provider = self.providers[source]
-            try:
-                result = await provider.call_tool(tool_name, args)
+                tools = await provider.list_tools()
+                for tool_info in tools:
+                    full_name = f"{provider_name}__{tool_info.name}"
+                    all_tools[full_name] = provider_name
             except Exception as e:
-                logger.error(
-                    f"Provider '{source}' failed to call tool '{tool_name}': {e}"
+                logger.warning(
+                    f"Failed to list tools from provider '{provider_name}': {e}"
                 )
-                raise
 
-        if isinstance(result, dict) and "inner_call" in result:
-            name = result["inner_call"]["name"]
-            if name == "__agent_run__":
-                resp = await self.run(
-                    result["inner_call"]["args"], use_memory=False, update_memory=False
-                )
-                result = resp.content
+        # 2. Match tool name (exact match first, then suffix match)
+        resolved_name = None
+        if prefixed_name in all_tools:
+            resolved_name = prefixed_name
+        else:
+            # Suffix matching: find tools ending with the given name
+            for name in all_tools.keys():
+                if name.endswith(prefixed_name):
+                    resolved_name = name
+                    logger.warning(
+                        f"Tool '{prefixed_name}' resolved to '{resolved_name}' via suffix matching"
+                    )
+                    break
+
+        if not resolved_name:
+            raise ValueError(
+                f"Tool '{prefixed_name}' not found. Available tools: {list(all_tools.keys())[:10]}..."
+            )
+
+        # 3. Call the resolved tool
+        source = all_tools[resolved_name]
+        try:
+            if source == "base":
+                func = self._base_functions[resolved_name]
+                result = await run_func(func, **args)
+            else:
+                # Provider tool: source is the provider_name
+                provider = self.providers[source]
+                tool_name = resolved_name.split("__", 1)[1]
+                result = await provider.call_tool(tool_name, args)
+        except Exception as e:
+            logger.error(
+                f"Failed to call tool '{resolved_name}' (source: {source}): {e}"
+            )
+            raise
 
         return result
 
@@ -780,7 +776,6 @@ class Agent:
 
         return functions
 
-
     async def _handle_tool_calls(
         self,
         tool_calls: list,
@@ -795,7 +790,7 @@ class Agent:
             func_name = call["function"]["name"]
             tool_call_id = call["id"]
             start_time = time.time()
-            
+
             # Try to parse arguments
             try:
                 args_str = call["function"]["arguments"]
@@ -807,9 +802,9 @@ class Agent:
                 logger.error(f"Failed to parse arguments for tool '{func_name}': {e}")
                 params = {}
                 parse_error = e
-            
+
             allow_timeout = func_name != "call_agent"
-            
+
             # Handle parse error or execute tool
             if parse_error:
                 # Treat as execution failure
@@ -1084,7 +1079,7 @@ class Agent:
 
     def _render_system_prompt(self, prompt: str, context_variables: dict) -> str:
         """Render system prompt with context variables.
-        
+
         Supports `${{ ... }}` syntax for python format strings.
         Example: ${{ "Hello {name}" }} or ${{ context_variables['name'] }}
         """
@@ -1092,17 +1087,18 @@ class Agent:
             return prompt
         # Regex to find ${{ ... }} blocks
         pattern = re.compile(r"\$\{\{(.*?)\}\}")
-        
+
         def replacer(match: re.Match) -> str:
             content = match.group(1).strip()
-            
+
             # Check quoting
             is_quoted = False
-            if (content.startswith('"') and content.endswith('"')) or \
-               (content.startswith("'") and content.endswith("'")):
+            if (content.startswith('"') and content.endswith('"')) or (
+                content.startswith("'") and content.endswith("'")
+            ):
                 content = content[1:-1]
                 is_quoted = True
-            
+
             # If not quoted and has no braces, treat as a direct variable reference
             # e.g. ${{ client_id }} -> {client_id} -> value
             if not is_quoted and "{" not in content:
@@ -1111,7 +1107,9 @@ class Agent:
             try:
                 # Use str.format for safe interpolation
                 # Inject context_variables both as unpacked kwargs and as a dict
-                return content.format(**context_variables, context_variables=context_variables)
+                return content.format(
+                    **context_variables, context_variables=context_variables
+                )
             except Exception as e:
                 logger.warning(
                     f"Failed to render system prompt block '{{{{ {content} }}}}': {e}"
@@ -1147,10 +1145,10 @@ class Agent:
 
         # Expand file:// image references to Base64 for LLM API call
         from .utils.vision import expand_image_references_for_llm
+
         history = expand_image_references_for_llm(history)
 
         tool_timeout = tool_timeout or self.tool_timeout
-
 
         # Use instructions directly - all prompt composition happens at template parsing time
         # Render system prompt with context variables
@@ -1190,7 +1188,7 @@ class Agent:
         # TaskToolSet is wrapped in LocalProvider, check by toolset_name
         task_toolset = None
         for provider in self.providers.values():
-            if hasattr(provider, 'toolset') and provider.toolset_name == 'task':
+            if hasattr(provider, "toolset") and provider.toolset_name == "task":
                 task_toolset = provider.toolset
                 break
 
@@ -1207,7 +1205,7 @@ class Agent:
                 history_for_llm = history + [eu_msg]  # Temporary, EU not persisted
             else:
                 history_for_llm = history
-            
+
             message = await self._acompletion_with_models(
                 history_for_llm,
                 tool_use,
@@ -1246,7 +1244,7 @@ class Agent:
                 task_toolset.process_tool_messages(
                     tool_calls=message["tool_calls"],
                     tool_messages=tool_messages,
-                    context_variables=context_variables
+                    context_variables=context_variables,
                 )
 
             # Filter out all transfer messages - they will be handled in _prepare_execution_context()
@@ -1403,14 +1401,15 @@ class Agent:
         else:
             # User input path: convert input to messages
             input_messages = await self._input_to_openai_messages(msg)
-            
+
             # Process images: convert Base64 to file:// paths for efficient storage
             from .utils.vision import get_image_store
+
             image_store = get_image_store()
             chat_id = memory_instance.id if memory_instance else "default"
             for m in input_messages:
                 image_store.process_message_images(m, chat_id)
-            
+
             logger.debug(
                 f"Input messages: {input_messages} , memory_length: {len(memory_instance.get_messages(execution_context_id=execution_context_id))} "
                 f"raw memory_length: {len(memory_instance.get_messages())} memory_id: {memory_instance.id}"
@@ -1425,9 +1424,10 @@ class Agent:
 
         # preserve execution_context_id if tool need
         context_variables = (context_variables or {}).copy()
-        
+
         # Inject global context variables from settings
         from .settings import get_settings
+
         context_variables.update(get_settings().get_context_variables())
 
         if execution_context_id is not None:
@@ -1513,9 +1513,7 @@ class Agent:
                 exec_context.execution_context_id is not None
                 and "execution_context_id" not in step_message
             ):
-                step_message["execution_context_id"] = (
-                    exec_context.execution_context_id
-                )
+                step_message["execution_context_id"] = exec_context.execution_context_id
 
             await _detect_attachments(step_message)
 
@@ -1669,4 +1667,3 @@ async def _call_agent(
             "success": False,
             "error": str(e),
         }
-
