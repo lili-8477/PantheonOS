@@ -22,7 +22,6 @@ from .log import logger
 class ProviderType(Enum):
     """Supported LLM providers"""
     OPENAI = "openai"
-    ZHIPU = "zhipu"
     LITELLM = "litellm"
 
 
@@ -41,9 +40,8 @@ def detect_provider(model: str, force_litellm: bool) -> ProviderConfig:
     """Detect provider from model string.
 
     Model format:
-    - "gpt-4" → OpenAI
-    - "zhipu/glm-4" → Zhipu
-    - Other → OpenAI (default)
+    - "gpt-4" → OpenAI (via LiteLLM)
+    - "provider/model" → LiteLLM (handles zhipu, anthropic, etc. natively)
 
     Args:
         model: Model identifier string
@@ -51,17 +49,16 @@ def detect_provider(model: str, force_litellm: bool) -> ProviderConfig:
 
     Returns:
         ProviderConfig with detected provider and model name
-
-    Raises:
-        ValueError: If provider prefix is unknown
     """
     if "/" in model:
         provider_str, model_name = model.split("/", 1)
-        try:
-            provider_type = ProviderType(provider_str.lower())
-        except ValueError:
+        # Check if it's explicitly openai provider
+        if provider_str.lower() == "openai":
+            provider_type = ProviderType.OPENAI
+        else:
+            # All other prefixed models go through LiteLLM (zhipu, anthropic, etc.)
             provider_type = ProviderType.LITELLM
-            model_name = model
+            model_name = model  # Keep full model string for LiteLLM
     else:
         provider_type = ProviderType.OPENAI
         model_name = model
@@ -274,31 +271,16 @@ async def call_llm_provider(
     """
     # Import here to avoid circular imports
     from .llm import (
-        acompletion_openai,
-        acompletion_zhipu,
         acompletion_litellm,
         remove_metadata,
     )
 
     # Remove metadata before sending to LLM
-    
     clean_messages = [m.copy() for m in messages]
     clean_messages = remove_metadata(clean_messages)
 
     # Call appropriate provider
-    if config.provider_type == ProviderType.ZHIPU:
-        complete_resp = await acompletion_zhipu(
-            messages=clean_messages,
-            model=config.model_name,
-            tools=tools,
-            response_format=response_format,
-            process_chunk=process_chunk,
-            base_url=config.base_url or "https://open.bigmodel.cn/api/paas/v4/",
-            model_params=model_params,
-        )
-        error_prefix = "Zhipu AI"
-
-    elif config.provider_type == ProviderType.OPENAI:
+    if config.provider_type == ProviderType.OPENAI:
         # LiteLLM requires explicit provider prefixes for models it cannot auto-detect.
         # Ensure OpenAI models include the provider namespace to avoid BadRequestError.
         model_name = config.model_name
