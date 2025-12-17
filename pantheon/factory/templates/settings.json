@@ -123,18 +123,18 @@
         // }
     },
     // ===== ACE (Agentic Context Engineering) Configuration =====
-    // ACE is a long-term memory system that learns from conversation trajectories
+    // Learning is a long-term memory system that learns from conversation trajectories
     // NOTE: ACE requires models that support structured output (response_format)
     // such as OpenAI models. Set enable to true only if you have a compatible model.
-    "ace": {
-        // Enable ACE learning system (disabled by default - requires compatible model)
+    "learning": {
+        // Enable learning learning system (disabled by default - requires compatible model)
         "enable": false,
         // LLM model for reflection and skill management (null = use default)
         // Must support structured output (response_format)
         "learning_model": null,
-        // Skillbook file path (relative to .pantheon/ace/)
+        // Skillbook file path (relative to .pantheon/learning/)
         "skillbook_path": "skillbook.json",
-        // Learning data directory (relative to .pantheon/ace/)
+        // Learning data directory (relative to .pantheon/learning/)
         "learning_dir": "learning",
         // Max skills per section (auto-evicts low-score skills when exceeded)
         "max_skills_per_section": 30,

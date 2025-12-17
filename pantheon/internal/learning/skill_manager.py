@@ -11,8 +11,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
-from ..agent import Agent
-from ..utils.log import logger
+from ...agent import Agent
+from ...utils.log import logger
 from .reflector import ReflectorOutput
 from .skillbook import Skillbook
 

@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-from ..package_runtime import get_package_manager
+from ..internal.package_runtime import get_package_manager
 from ..toolset import ToolSet, tool, get_current_context_variables
 from ..utils.log import logger
 

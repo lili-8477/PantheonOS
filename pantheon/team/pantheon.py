@@ -15,7 +15,7 @@ from ..utils.misc import run_func
 from .base import Team
 
 if TYPE_CHECKING:
-    from ..ace import ACELearningPipeline, Skillbook
+    from ..internal.learning import LearningPipeline, Skillbook
 
 
 def _slugify(name: str) -> str:
@@ -123,7 +123,7 @@ class PantheonTeam(Team):
         max_delegate_depth: int | None = 5,
         allow_transfer: bool = True,
         skillbook: Optional["Skillbook"] = None,
-        ace_pipeline: Optional["ACELearningPipeline"] = None,
+        learning_pipeline: Optional["LearningPipeline"] = None,
     ):
         """Initialize PantheonTeam with unified agent architecture.
 
@@ -133,8 +133,8 @@ class PantheonTeam(Team):
                          when delegating tasks.
             max_delegate_depth: Maximum depth for nested call_agent calls.
             allow_transfer: If True, add transfer_to_agent tool to agents.
-            skillbook: Optional ACE Skillbook for long-term memory.
-            ace_pipeline: Optional ACE learning pipeline.
+            skillbook: Optional Skillbook for long-term memory.
+            learning_pipeline: Optional learning pipeline.
 
         Note:
             All agents are equal - the first one is used as the default
@@ -148,9 +148,9 @@ class PantheonTeam(Team):
         self.max_delegate_depth = max_delegate_depth
         self.allow_transfer = allow_transfer
         
-        # ACE long-term memory
+        # Long-term memory
         self._skillbook = skillbook
-        self._ace_pipeline = ace_pipeline
+        self._learning_pipeline = learning_pipeline
         self._skills_injected = False  # Track if skills are already injected
         
         # Context compression
@@ -165,7 +165,7 @@ class PantheonTeam(Team):
     def _init_compressor(self):
         """Initialize context compressor from settings."""
         from ..settings import get_settings
-        from ..compression import CompressionConfig, ContextCompressor
+        from ..internal.compression import CompressionConfig, ContextCompressor
         
         settings = get_settings()
         compression_config = settings.get_compression_config()
@@ -212,34 +212,34 @@ class PantheonTeam(Team):
         messages: List[dict],
         parent_question: Optional[str] = None,
     ) -> None:
-        """Submit learning data to ACE pipeline.
+        """Submit learning data to learning pipeline.
         
         Args:
             agent_name: Name of the agent that produced the trajectory
             messages: List of messages from the conversation
             parent_question: For sub_agent, the delegation instruction
         """
-        from ..ace.pipeline import build_learning_input
+        from ..internal.learning.pipeline import build_learning_input
         from ..settings import get_settings
         
         settings = get_settings()
-        ace_config = settings.get_ace_config()
+        learning_config = settings.get_learning_config()
         
         turn_id = str(uuid.uuid4())
         learning_input = build_learning_input(
             turn_id=turn_id,
             agent_name=agent_name,
             messages=messages,
-            learning_dir=ace_config["learning_dir"],
-            max_tool_arg_length=ace_config["max_tool_arg_length"],
-            max_tool_output_length=ace_config["max_tool_output_length"],
+            learning_dir=learning_config["learning_dir"],
+            max_tool_arg_length=learning_config["max_tool_arg_length"],
+            max_tool_output_length=learning_config["max_tool_output_length"],
         )
         
         # For sub_agent, use delegation instruction as question
         if parent_question:
             learning_input.question = parent_question
         
-        self._ace_pipeline.submit(learning_input)
+        self._learning_pipeline.submit(learning_input)
         logger.debug(f"Submitted learning for {agent_name}, turn_id={turn_id}")
 
     async def _perform_compression(self, memory: Memory) -> None:
@@ -252,8 +252,8 @@ class PantheonTeam(Team):
         
         settings = get_settings()
         # Use ace/learning directory for unified management with ACE learning data
-        ace_config = settings.get_ace_config()
-        compression_dir = ace_config["learning_dir"]
+        learning_config = settings.get_learning_config()
+        compression_dir = learning_config["learning_dir"]
         
         result = await self._compressor.compress(
             messages=memory._messages,
@@ -429,7 +429,7 @@ class PantheonTeam(Team):
                 )
 
                 # Submit sub_agent learning (child_memory is the complete conversation)
-                if self._ace_pipeline:
+                if self._learning_pipeline:
                     self._submit_learning(
                         agent_name=target_agent.name,
                         messages=child_memory._messages,
@@ -546,7 +546,7 @@ class PantheonTeam(Team):
                 msg = tool_message
             else:
                 # Submit main agent learning (exclude sub_agent messages)
-                if self._ace_pipeline:
+                if self._learning_pipeline:
                     current_messages = [
                         m for m in memory._messages[turn_start_index:]
                         if m.get("execution_context_id") is None

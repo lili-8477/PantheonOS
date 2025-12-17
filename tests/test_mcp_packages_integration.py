@@ -13,7 +13,7 @@ import socket
 from pathlib import Path
 
 from pantheon.endpoint.core import Endpoint
-from pantheon.package_runtime import get_package_manager, build_context_payload, export_context
+from pantheon.internal.package_runtime import get_package_manager, build_context_payload, export_context
 
 
 def find_free_port():
@@ -140,7 +140,7 @@ async def test_endpoint_mcp_uri_in_context(endpoint_with_mcp):
 @pytest.mark.asyncio
 async def test_mcp_package_manager_methods(endpoint_with_mcp, monkeypatch):
     """Test PackageManager MCP-specific methods."""
-    from pantheon.package_runtime.manager import PackageManager
+    from pantheon.internal.package_runtime.manager import PackageManager
     from pathlib import Path
     
     workspace = Path(__file__).parent / "sample_workspace"

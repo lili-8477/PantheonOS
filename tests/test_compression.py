@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from pantheon.compression import (
+from pantheon.internal.compression import (
     CompressionConfig,
     CompressionResult,
     CompressionStatus,

@@ -1700,7 +1700,7 @@ def _create_user_message(content: str) -> dict:
 async def _detect_attachments(step_message: dict) -> None:
     """Helper: Detect attachments in a message (independent of memory saving)."""
     try:
-        from .message.attachment_pipeline import get_message_processor
+        from .internal.message.attachment_pipeline import get_message_processor
 
         processor = get_message_processor()
         processed = await processor.process_message_with_attachments(step_message)

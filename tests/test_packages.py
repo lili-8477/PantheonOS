@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 
 from pantheon.agent import Agent
-from pantheon.package_runtime import (
+from pantheon.internal.package_runtime import (
     configure_package_manager,
     build_context_payload,
     export_context,
 )
-from pantheon.package_runtime.manager import PackageManager
+from pantheon.internal.package_runtime.manager import PackageManager
 
 SAMPLE_WORKSPACE = Path(__file__).parent / "sample_workspace"
 SAMPLE_PACKAGES = {

@@ -9,12 +9,12 @@ Core Components:
 - SkillLoader: Loads and merges skills from multiple sources
 - Reflector: Analyzes agent trajectories to extract learnings
 - SkillManager: Decides what updates to apply to the Skillbook
-- ACELearningPipeline: Async pipeline coordinating the learning process
+- LearningPipeline: Async pipeline coordinating the learning process
 """
 
 from typing import Optional, Tuple
 
-from .pipeline import ACELearningPipeline, LearningInput, build_learning_input
+from .pipeline import LearningPipeline, LearningInput, build_learning_input
 from .reflector import (
     ExtractedLearning,
     Reflector,
@@ -26,10 +26,10 @@ from .skill_manager import SkillManager, SkillManagerOutput, UpdateOperation
 from .skillbook import Skill, Skillbook
 
 
-def create_ace_resources(
+def create_learning_resources(
     enable: Optional[bool] = None,
     config: Optional[dict] = None,
-) -> Tuple[Optional[Skillbook], Optional[ACELearningPipeline]]:
+) -> Tuple[Optional[Skillbook], Optional[LearningPipeline]]:
     """
     Factory function to create ACE resources.
     
@@ -46,17 +46,17 @@ def create_ace_resources(
         config: Override for ACE config (None = read from settings)
     
     Returns:
-        Tuple of (Skillbook, ACELearningPipeline) or (None, None)
+        Tuple of (Skillbook, LearningPipeline) or (None, None)
     """
-    from ..settings import get_settings
-    from ..utils.log import logger
+    from ...settings import get_settings
+    from ...utils.log import logger
     
     settings = get_settings()
-    _config = config or settings.get_ace_config()
+    _config = config or settings.get_learning_config()
     _enable = enable if enable is not None else _config["enable"]
     
     if not _enable:
-        logger.info("ACE disabled")
+        logger.info("Learning disabled")
         return None, None
     
     # Create skillbook and load from JSON
@@ -76,7 +76,7 @@ def create_ace_resources(
             logger.info(f"Merged {loaded} skills from {skills_dir}")
     
     # Create learning pipeline (with skills_dir for async reload)
-    pipeline = ACELearningPipeline(
+    pipeline = LearningPipeline(
         skillbook=skillbook,
         reflector=Reflector(model=_config["learning_model"]),
         skill_manager=SkillManager(model=_config["learning_model"]),
@@ -85,13 +85,13 @@ def create_ace_resources(
         skills_dir=skills_dir if skills_dir.exists() else None,
     )
     
-    logger.info(f"ACE enabled: {len(skillbook.skills())} skills loaded")
+    logger.info(f"Learning enabled: {len(skillbook.skills())} skills loaded")
     return skillbook, pipeline
 
 
 __all__ = [
     # Factory
-    "create_ace_resources",
+    "create_learning_resources",
     # Skillbook
     "Skill",
     "Skillbook",
@@ -111,7 +111,7 @@ __all__ = [
     "SkillManagerOutput",
     "UpdateOperation",
     # Pipeline
-    "ACELearningPipeline",
+    "LearningPipeline",
     # Prompt Constants
     "SKILLBOOK_USAGE_INSTRUCTIONS",
     "SKILLBOOK_HEADER",

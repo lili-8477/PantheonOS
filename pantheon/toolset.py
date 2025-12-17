@@ -18,7 +18,7 @@ from .utils.misc import run_func
 
 
 def _load_context_lazy():
-    from .package_runtime.context import load_context as _load_ctx
+    from .internal.package_runtime.context import load_context as _load_ctx
 
     return _load_ctx
 

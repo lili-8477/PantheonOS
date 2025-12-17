@@ -7,10 +7,10 @@ Tests cover:
 3. LearningInput and build_learning_input
 4. Reflector LLM analysis
 5. SkillManager LLM decisions
-6. ACELearningPipeline async workflow
+6. LearningPipeline async workflow
 7. End-to-end integration
 
-Run with: pytest tests/test_ace.py -v
+Run with: pytest tests/test_learning.py -v
 """
 
 import asyncio
@@ -25,18 +25,18 @@ from dotenv import load_dotenv
 # Load environment variables from .env
 load_dotenv()
 
-from pantheon.ace import (
-    ACELearningPipeline,
+from pantheon.internal.learning import (
+    LearningPipeline,
     LearningInput,
     Reflector,
     Skill,
     Skillbook,
     SkillManager,
     build_learning_input,
-    create_ace_resources,
+    create_learning_resources,
 )
-from pantheon.ace.reflector import ReflectorOutput, SkillTag, ExtractedLearning
-from pantheon.ace.skill_manager import UpdateOperation
+from pantheon.internal.learning.reflector import ReflectorOutput, SkillTag, ExtractedLearning
+from pantheon.internal.learning.skill_manager import UpdateOperation
 
 # Test model - using gpt-4o-mini which supports structured output (response_format)
 # Note: zai/glm-4-flash does not support response_format parameter
@@ -263,7 +263,7 @@ class TestSkillLoader:
 
     def test_parse_front_matter(self, skills_dir):
         """Test parsing YAML front matter from markdown files."""
-        from pantheon.ace.skill_loader import parse_front_matter
+        from pantheon.internal.learning.skill_loader import parse_front_matter
 
         # Create a skill file with front matter
         skill_file = skills_dir / "test.md"
@@ -288,7 +288,7 @@ tags: [test, demo]
 
     def test_parse_front_matter_no_front_matter(self, skills_dir):
         """Test parsing file without front matter."""
-        from pantheon.ace.skill_loader import parse_front_matter
+        from pantheon.internal.learning.skill_loader import parse_front_matter
 
         # Create a file without front matter
         no_fm_file = skills_dir / "no_fm.md"
@@ -301,7 +301,7 @@ tags: [test, demo]
 
     def test_parse_skills_md(self, skills_dir):
         """Test parsing SKILLS.md for simple rules."""
-        from pantheon.ace.skill_loader import parse_skills_md
+        from pantheon.internal.learning.skill_loader import parse_skills_md
 
         # Create SKILLS.md
         skills_md = skills_dir / "SKILLS.md"
@@ -335,7 +335,7 @@ tags: [test, demo]
 
     def test_scan_skill_files(self, skills_dir):
         """Test scanning skills directory for .md files."""
-        from pantheon.ace.skill_loader import scan_skill_files
+        from pantheon.internal.learning.skill_loader import scan_skill_files
 
         # Create various files
         (skills_dir / "skill1.md").write_text("# Skill 1")
@@ -359,7 +359,7 @@ tags: [test, demo]
 
     def test_parse_skill_from_file(self, skills_dir):
         """Test parsing a skill file and creating a Skill object."""
-        from pantheon.ace.skill_loader import parse_skill_from_file
+        from pantheon.internal.learning.skill_loader import parse_skill_from_file
 
         # Create a valid skill file
         skill_file = skills_dir / "my-workflow.md"
@@ -384,7 +384,7 @@ tags: [example]
 
     def test_parse_skill_from_file_missing_required_fields(self, skills_dir):
         """Test that files without id or description are skipped."""
-        from pantheon.ace.skill_loader import parse_skill_from_file
+        from pantheon.internal.learning.skill_loader import parse_skill_from_file
 
         # Create file without description
         no_desc = skills_dir / "no-desc.md"
@@ -410,7 +410,7 @@ description: No id here
 
     def test_skill_loader_merge(self, skills_dir):
         """Test SkillLoader merging skills into skillbook."""
-        from pantheon.ace.skill_loader import SkillLoader
+        from pantheon.internal.learning.skill_loader import SkillLoader
 
         # Create skill files
         (skills_dir / "workflow1.md").write_text("""---
@@ -441,7 +441,7 @@ description: Second workflow
 
     def test_skill_loader_preserves_ratings(self, skills_dir):
         """Test that SkillLoader preserves existing ratings when updating."""
-        from pantheon.ace.skill_loader import SkillLoader
+        from pantheon.internal.learning.skill_loader import SkillLoader
 
         # Create skillbook with existing skill that has ratings
         skillbook = Skillbook()
@@ -478,7 +478,7 @@ section: strategies
 
     def test_skill_loader_orphan_cleanup(self, skills_dir):
         """Test that SkillLoader cleans up orphan skills."""
-        from pantheon.ace.skill_loader import SkillLoader
+        from pantheon.internal.learning.skill_loader import SkillLoader
 
         # Create skillbook with orphan skill (source file doesn't exist)
         skillbook = Skillbook()
@@ -522,7 +522,7 @@ description: This exists
 
     def test_skill_loader_no_orphan_cleanup(self, skills_dir):
         """Test that orphan cleanup can be disabled."""
-        from pantheon.ace.skill_loader import SkillLoader
+        from pantheon.internal.learning.skill_loader import SkillLoader
 
         # Create skillbook with orphan skill
         skillbook = Skillbook()
@@ -544,7 +544,7 @@ description: This exists
 
     def test_skill_loader_system_skill(self, skills_dir):
         """Test loading system-generated skill files."""
-        from pantheon.ace.skill_loader import SkillLoader
+        from pantheon.internal.learning.skill_loader import SkillLoader
 
         # Create a system skill file
         (skills_dir / "wfl-00001.md").write_text("""---
@@ -848,8 +848,8 @@ class TestSkillManager:
 # ===========================================================================
 
 
-class TestACELearningPipeline:
-    """Tests for ACELearningPipeline async workflow."""
+class TestLearningPipeline:
+    """Tests for LearningPipeline async workflow."""
 
     @pytest.mark.asyncio
     async def test_pipeline_lifecycle(self, temp_dir):
@@ -859,7 +859,7 @@ class TestACELearningPipeline:
         reflector = Reflector(model=TEST_MODEL)
         sm = SkillManager(model=TEST_MODEL)
 
-        pipeline = ACELearningPipeline(
+        pipeline = LearningPipeline(
             skillbook=skillbook,
             reflector=reflector,
             skill_manager=sm,
@@ -880,7 +880,7 @@ class TestACELearningPipeline:
         reflector = Reflector(model=TEST_MODEL)
         sm = SkillManager(model=TEST_MODEL)
 
-        pipeline = ACELearningPipeline(
+        pipeline = LearningPipeline(
             skillbook=skillbook,
             reflector=reflector,
             skill_manager=sm,
@@ -905,7 +905,7 @@ class TestACELearningPipeline:
     async def test_pipeline_skip_short_trajectory(self, temp_dir):
         """Test that short trajectories are skipped."""
         skillbook = Skillbook()
-        pipeline = ACELearningPipeline(
+        pipeline = LearningPipeline(
             skillbook=skillbook,
             reflector=Reflector(model=TEST_MODEL),
             skill_manager=SkillManager(model=TEST_MODEL),
@@ -934,11 +934,11 @@ class TestACELearningPipeline:
 # ===========================================================================
 
 
-class TestACEIntegration:
+class TestLearningIntegration:
     """End-to-end integration tests."""
 
     @pytest.mark.asyncio
-    async def test_create_ace_resources(self, temp_dir):
+    async def test_create_learning_resources(self, temp_dir):
         """Test factory function for creating ACE resources."""
         config = {
             "enable": True,
@@ -949,7 +949,7 @@ class TestACEIntegration:
             "max_content_length": 400,
         }
 
-        skillbook, pipeline = create_ace_resources(enable=True, config=config)
+        skillbook, pipeline = create_learning_resources(enable=True, config=config)
 
         assert skillbook is not None
         assert pipeline is not None
@@ -957,9 +957,9 @@ class TestACEIntegration:
         assert skillbook.max_content_length == 400
 
     @pytest.mark.asyncio
-    async def test_create_ace_resources_disabled(self):
+    async def test_create_learning_resources_disabled(self):
         """Test that disabled ACE returns None resources."""
-        skillbook, pipeline = create_ace_resources(enable=False)
+        skillbook, pipeline = create_learning_resources(enable=False)
 
         assert skillbook is None
         assert pipeline is None
@@ -976,7 +976,7 @@ class TestACEIntegration:
             "max_skills_per_section": 30,
             "max_content_length": 500,
         }
-        skillbook, pipeline = create_ace_resources(enable=True, config=config)
+        skillbook, pipeline = create_learning_resources(enable=True, config=config)
 
         # Start pipeline
         await pipeline.start()
@@ -1040,11 +1040,11 @@ class TestACEIntegration:
 # ===========================================================================
 
 
-class TestPantheonTeamACE:
+class TestPantheonTeamLearning:
     """Tests for PantheonTeam integration with ACE (single agent scenarios)."""
 
     @pytest.fixture
-    def ace_resources(self, temp_dir):
+    def learning_resources(self, temp_dir):
         """Create ACE resources for testing."""
         config = {
             "enable": True,
@@ -1054,16 +1054,16 @@ class TestPantheonTeamACE:
             "max_skills_per_section": 30,
             "max_content_length": 500,
         }
-        skillbook, pipeline = create_ace_resources(enable=True, config=config)
+        skillbook, pipeline = create_learning_resources(enable=True, config=config)
         return skillbook, pipeline
 
     @pytest.mark.asyncio
-    async def test_pantheon_team_skillbook_injection(self, ace_resources, temp_dir):
+    async def test_pantheon_team_skillbook_injection(self, learning_resources, temp_dir):
         """Test that skillbook is injected into agent instructions."""
         from pantheon.agent import Agent
         from pantheon.team import PantheonTeam
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Add some skills before creating team
         skillbook.add_skill(
@@ -1089,7 +1089,7 @@ class TestPantheonTeamACE:
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # Manually trigger skill injection (normally happens on first run)
@@ -1105,13 +1105,13 @@ class TestPantheonTeamACE:
         print(agent.instructions)
 
     @pytest.mark.asyncio
-    async def test_pantheon_team_single_agent_run(self, ace_resources, temp_dir):
+    async def test_pantheon_team_single_agent_run(self, learning_resources, temp_dir):
         """Test running single agent in PantheonTeam with ACE learning."""
         from pantheon.agent import Agent
         from pantheon.team import PantheonTeam
         from pantheon.memory import Memory
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Start pipeline
         await pipeline.start()
@@ -1127,7 +1127,7 @@ class TestPantheonTeamACE:
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # Run a simple query
@@ -1151,13 +1151,13 @@ class TestPantheonTeamACE:
         assert len(memory._messages) >= 2  # At least user + assistant
 
     @pytest.mark.asyncio
-    async def test_pantheon_team_with_tool_use(self, ace_resources, temp_dir):
+    async def test_pantheon_team_with_tool_use(self, learning_resources, temp_dir):
         """Test PantheonTeam with tool usage and ACE learning."""
         from pantheon.agent import Agent
         from pantheon.team import PantheonTeam
         from pantheon.memory import Memory
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Start pipeline
         await pipeline.start()
@@ -1186,7 +1186,7 @@ class TestPantheonTeamACE:
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # Run query that should use tool
@@ -1216,13 +1216,13 @@ class TestPantheonTeamACE:
             print(f"{i}: {msg.get('role')} - {str(msg.get('content', ''))[:100]}...")
 
     @pytest.mark.asyncio
-    async def test_pantheon_team_learning_submission(self, ace_resources, temp_dir):
+    async def test_pantheon_team_learning_submission(self, learning_resources, temp_dir):
         """Test that learning is submitted after agent run."""
         from pantheon.agent import Agent
         from pantheon.team import PantheonTeam
         from pantheon.memory import Memory
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Start pipeline
         await pipeline.start()
@@ -1238,7 +1238,7 @@ class TestPantheonTeamACE:
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # Run query
@@ -1281,7 +1281,7 @@ class TestPantheonTeamACE:
         team = PantheonTeam(
             agents=[agent],
             skillbook=None,  # No ACE
-            ace_pipeline=None,  # No ACE
+            learning_pipeline=None,  # No ACE
         )
         
         # Run query
@@ -1296,12 +1296,12 @@ class TestPantheonTeamACE:
         assert response.content is not None
 
     @pytest.mark.asyncio
-    async def test_pantheon_team_agent_scope_skills(self, ace_resources, temp_dir):
+    async def test_pantheon_team_agent_scope_skills(self, learning_resources, temp_dir):
         """Test that agent-specific skills are properly injected."""
         from pantheon.agent import Agent
         from pantheon.team import PantheonTeam
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Enable agent scope for this test
         skillbook.enable_agent_scope = True
@@ -1338,7 +1338,7 @@ class TestPantheonTeamACE:
         team = PantheonTeam(
             agents=[python_agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # Manually trigger skill injection (normally happens on first run)
@@ -1354,7 +1354,7 @@ class TestPantheonTeamACE:
         print(python_agent.instructions)
 
     @pytest.mark.asyncio
-    async def test_pantheon_team_skill_learning_e2e(self, ace_resources, temp_dir):
+    async def test_pantheon_team_skill_learning_e2e(self, learning_resources, temp_dir):
         """
         End-to-end test: User teaches agent something → ACE learns → Skill added.
         
@@ -1369,7 +1369,7 @@ class TestPantheonTeamACE:
         from pantheon.team import PantheonTeam
         from pantheon.memory import Memory
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Verify skillbook starts empty
         initial_skill_count = len(skillbook.skills())
@@ -1395,7 +1395,7 @@ Always be specific about what you learned.""",
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # User message with explicit learning instruction
@@ -1466,7 +1466,7 @@ Please acknowledge that you understand this rule and will apply it.
         assert len(memory._messages) >= 2
 
     @pytest.mark.asyncio 
-    async def test_pantheon_team_multi_turn_learning(self, ace_resources, temp_dir):
+    async def test_pantheon_team_multi_turn_learning(self, learning_resources, temp_dir):
         """
         Test learning across multiple conversation turns.
         
@@ -1477,7 +1477,7 @@ Please acknowledge that you understand this rule and will apply it.
         from pantheon.team import PantheonTeam
         from pantheon.memory import Memory
 
-        skillbook, pipeline = ace_resources
+        skillbook, pipeline = learning_resources
         
         # Start pipeline
         await pipeline.start()
@@ -1493,7 +1493,7 @@ Please acknowledge that you understand this rule and will apply it.
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         memory = Memory(name="multi-turn-test")
@@ -1537,7 +1537,7 @@ Please acknowledge that you understand this rule and will apply it.
 # ===========================================================================
 
 
-class TestACEPersistence:
+class TestLearningPersistence:
     """Tests for ACE persistence in real .pantheon directory."""
 
     @pytest.mark.asyncio
@@ -1555,13 +1555,13 @@ class TestACEPersistence:
         import shutil
         
         settings = get_settings()
-        ace_dir = settings.ace_dir
+        learning_dir = settings.learning_dir
         
-        print(f"\n=== ACE Directory: {ace_dir} ===")
+        print(f"\n=== ACE Directory: {learning_dir} ===")
         
         # Clean up previous test data (if any)
-        test_skillbook_path = ace_dir / "test_skillbook.json"
-        test_learning_dir = ace_dir / "test_learning"
+        test_skillbook_path = learning_dir / "test_skillbook.json"
+        test_learning_dir = learning_dir / "test_learning"
         
         if test_skillbook_path.exists():
             test_skillbook_path.unlink()
@@ -1578,7 +1578,7 @@ class TestACEPersistence:
             "max_content_length": 500,
         }
         
-        skillbook, pipeline = create_ace_resources(enable=True, config=config)
+        skillbook, pipeline = create_learning_resources(enable=True, config=config)
         
         # Start pipeline
         await pipeline.start()
@@ -1594,7 +1594,7 @@ class TestACEPersistence:
         team = PantheonTeam(
             agents=[agent],
             skillbook=skillbook,
-            ace_pipeline=pipeline,
+            learning_pipeline=pipeline,
         )
         
         # Run a conversation to trigger learning
@@ -1616,14 +1616,14 @@ class TestACEPersistence:
         
         # Verify files were created
         print(f"\n=== Checking Persistence ===")
-        print(f"ACE directory exists: {ace_dir.exists()}")
+        print(f"ACE directory exists: {learning_dir.exists()}")
         print(f"Skillbook file exists: {test_skillbook_path.exists()}")
         print(f"Learning dir exists: {test_learning_dir.exists()}")
         
         # List files in ACE directory
-        if ace_dir.exists():
-            print(f"\n=== Files in {ace_dir} ===")
-            for item in ace_dir.iterdir():
+        if learning_dir.exists():
+            print(f"\n=== Files in {learning_dir} ===")
+            for item in learning_dir.iterdir():
                 if item.is_file():
                     print(f"  📄 {item.name} ({item.stat().st_size} bytes)")
                 else:
@@ -1640,7 +1640,7 @@ class TestACEPersistence:
             print(content[:500])
         
         # Verify assertions
-        assert ace_dir.exists(), f"ACE directory should exist: {ace_dir}"
+        assert learning_dir.exists(), f"ACE directory should exist: {learning_dir}"
         assert test_skillbook_path.exists(), f"Skillbook should be saved: {test_skillbook_path}"
         
         # Check skillbook has skills
@@ -1665,8 +1665,8 @@ class TestACEPersistence:
         from pantheon.settings import get_settings
         
         settings = get_settings()
-        ace_dir = settings.ace_dir
-        test_path = ace_dir / "reload_test_skillbook.json"
+        learning_dir = settings.learning_dir
+        test_path = learning_dir / "reload_test_skillbook.json"
         
         print(f"\n=== Testing Skillbook Reload ===")
         print(f"Test path: {test_path}")

@@ -6,7 +6,7 @@ from pathlib import Path
 from ._shell import AsyncShell
 from ...toolset import ToolSet, tool
 from ...utils.log import logger
-from ...package_runtime.context import build_context_env
+from ...internal.package_runtime.context import build_context_env
 
 
 class ShellToolSet(ToolSet):

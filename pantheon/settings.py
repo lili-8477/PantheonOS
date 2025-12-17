@@ -236,9 +236,9 @@ class Settings:
         return self.pantheon_dir / "skills"
 
     @property
-    def ace_dir(self) -> Path:
-        """Directory for ACE long-term memory data."""
-        return self.pantheon_dir / "ace"
+    def learning_dir(self) -> Path:
+        """Directory for learning long-term memory data."""
+        return self.pantheon_dir / "learning"
 
     def get_model_selector(self) -> "ModelSelector":
         """
@@ -254,31 +254,31 @@ class Settings:
 
         return ModelSelector(self)
 
-    def get_ace_config(self) -> Dict[str, Any]:
+    def get_learning_config(self) -> Dict[str, Any]:
         """
-        Get ACE (Agentic Context Engineering) configuration.
+        Get learning (Agentic Context Engineering) configuration.
 
         Returns:
-            Dict with ACE config: enable, skillbook_path, learning_model, etc.
+            Dict with learning config: enable, skillbook_path, learning_model, etc.
         """
         self._ensure_loaded()
-        ace = self._settings.get("ace", {})
+        learning = self._settings.get("learning", {})
         
         return {
-            "enable": ace.get("enable", False),  # Disabled by default (requires structured output support)
+            "enable": learning.get("enable", False),  # Disabled by default (requires structured output support)
             "skillbook_path": str(
-                self.ace_dir / ace.get("skillbook_path", "skillbook.json")
+                self.learning_dir / learning.get("skillbook_path", "skillbook.json")
             ),
-            "learning_model": ace.get("learning_model"),  # None uses Agent's default
+            "learning_model": learning.get("learning_model"),  # None uses Agent's default
             "learning_dir": str(
-                self.ace_dir / ace.get("learning_dir", "learning")
+                self.learning_dir / learning.get("learning_dir", "learning")
             ),
-            "max_skills_per_section": ace.get("max_skills_per_section", 30),
-            "max_content_length": ace.get("max_content_length", 500),  # For Skillbook (skill content limit)
-            "max_tool_arg_length": ace.get("max_tool_arg_length", 200),  # For learning trajectory
-            "max_tool_output_length": ace.get("max_tool_output_length", 200),  # For learning trajectory
-            "cleanup_after_learning": ace.get("cleanup_after_learning", False),
-            "enable_agent_scope": ace.get("enable_agent_scope", False),
+            "max_skills_per_section": learning.get("max_skills_per_section", 30),
+            "max_content_length": learning.get("max_content_length", 500),  # For Skillbook (skill content limit)
+            "max_tool_arg_length": learning.get("max_tool_arg_length", 200),  # For learning trajectory
+            "max_tool_output_length": learning.get("max_tool_output_length", 200),  # For learning trajectory
+            "cleanup_after_learning": learning.get("cleanup_after_learning", False),
+            "enable_agent_scope": learning.get("enable_agent_scope", False),
         }
 
     def get_compression_config(self) -> Dict[str, Any]:

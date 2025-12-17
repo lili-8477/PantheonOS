@@ -11,8 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from pantheon.package_runtime import derive_packages_path, load_context
-from pantheon.package_runtime.runtime import get_runtime
+from pantheon.internal.package_runtime import derive_packages_path, load_context
+from pantheon.internal.package_runtime.runtime import get_runtime
 
 
 def _ensure_packages_path():
