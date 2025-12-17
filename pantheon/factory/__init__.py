@@ -1,7 +1,6 @@
 from pantheon.agent import Agent
 from pantheon.endpoint import ToolsetProxy
 from pantheon.endpoint.mcp import MCPServerConfig
-from pantheon.providers import MCPProvider, ToolSetProvider
 from pantheon.utils.log import logger
 from .template_manager import get_template_manager
 from .models import TeamConfig, AgentConfig
@@ -62,6 +61,7 @@ async def create_agent(
             # Create ToolsetProxy for remote toolsets
             proxy = ToolsetProxy.from_endpoint(endpoint_service, toolset_name)
 
+            from pantheon.providers import ToolSetProvider
             toolset_provider = ToolSetProvider(proxy)
             await toolset_provider.initialize()
 
@@ -115,6 +115,7 @@ async def create_agent(
             )
 
             # Create and initialize MCPProvider with agent's model for sampling
+            from pantheon.providers import MCPProvider
             mcp_provider = MCPProvider(
                 mcp_config,
                 model=model,  # Use agent's model for sampling requests

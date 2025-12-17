@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
 
 
-from fastmcp import FastMCP
 
 
 from pantheon.utils.log import logger
@@ -528,6 +527,7 @@ class MCPManager:
             self._next_port += 1
 
             # Create a FastMCP proxy server that wraps the STDIO client
+            from fastmcp import FastMCP
             proxy_mcp = FastMCP.as_proxy(instance.stdio_client, name=name)
             instance.fastmcp_proxy = proxy_mcp
 

@@ -8,18 +8,19 @@ import time
 from abc import ABC, abstractmethod
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 from uuid import uuid4
 
 from funcdesc import parse_func
 from pydantic import BaseModel, create_model
 
 from .memory import Memory
-from .remote import (
-    RemoteBackendFactory,
-    RemoteConfig,
-    RemoteWorker,
-)
+if TYPE_CHECKING:
+    from .remote import (
+        RemoteBackendFactory,
+        RemoteConfig,
+        RemoteWorker,
+    )
 from .toolset import ToolSet
 from .utils.llm import (
     TimingTracker,
@@ -37,7 +38,8 @@ from .utils.llm_providers import (
 )
 from .utils.log import logger
 from .utils.misc import desc_to_openai_dict, run_func
-from .utils.vision import VisionInput, vision_to_openai
+if TYPE_CHECKING:
+    from .utils.vision import VisionInput
 
 def _get_default_model() -> list[str]:
     """Get default model fallback chain from ModelSelector.
@@ -199,7 +201,8 @@ _CLIENT_ID_NAME = "client_id"
 class AgentService:
     def __init__(self, agent: "Agent", **kwargs):
         self.agent = agent
-
+        
+        from .remote import RemoteBackendFactory, RemoteWorker
         self.backend = RemoteBackendFactory.create_backend()
         self.worker: RemoteWorker = self.backend.create_worker(**kwargs)
         self.setup_worker()
@@ -250,10 +253,12 @@ class RemoteAgent:
     def __init__(
         self,
         service_id_or_name: str,
-        backend_config: Optional[RemoteConfig] = None,
+        backend_config: Optional["RemoteConfig"] = None,
         **remote_kwargs,
     ):
         self.service_id_or_name = service_id_or_name
+        from .remote import RemoteBackendFactory
+
         self.backend = RemoteBackendFactory.create_backend(backend_config)
         self.remote_kwargs = remote_kwargs
         self.name = None
@@ -353,14 +358,14 @@ class AgentTransfer(BaseModel):
     tool_call_id: str | None = None
 
 
-AgentInput = (
-    str
-    | BaseModel
-    | AgentResponse
-    | list[str | BaseModel | dict]
-    | AgentTransfer
-    | VisionInput
-)
+AgentInput = Union[
+    str,
+    BaseModel,
+    AgentResponse,
+    list[str | BaseModel | dict],
+    AgentTransfer,
+    "VisionInput",
+]
 
 
 class StopRunning(Exception):
@@ -868,7 +873,7 @@ class Agent:
                 params = json.loads(call["function"]["arguments"]) or {}
                 parse_error = None
             except Exception as e:
-                logger.error(f"Failed to parse arguments for tool '{func_name}': {e}")
+                logger.warning(f"Failed to parse arguments for tool '{func_name}': {e}")
                 params = {}
                 parse_error = e
 
@@ -1387,6 +1392,9 @@ class Agent:
         Returns:
             List of message dicts in OpenAI format
         """
+        # Lazy import to avoid loading PIL/numpy at module load time
+        from .utils.vision import VisionInput, vision_to_openai
+        
         assert isinstance(
             msg, (list, str, BaseModel, AgentResponse, VisionInput, dict)
         ), (

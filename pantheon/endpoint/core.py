@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import os
 import uuid
 from pathlib import Path
@@ -7,7 +6,7 @@ from typing import TypedDict
 
 from executor.engine import Engine, LocalJob
 
-from pantheon.remote import connect_remote
+
 from pantheon.settings import get_settings
 from pantheon.toolset import tool
 from pantheon.toolsets.file_transfer import FileTransferToolSet
@@ -184,14 +183,17 @@ class Endpoint(FileTransferToolSet):
             RuntimeError: If no free port is found within the range.
         """
         import socket
+
         for port in range(start_port, start_port + max_attempts):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(('127.0.0.1', port))
+                    s.bind(("127.0.0.1", port))
                     return port
             except OSError:
                 continue
-        raise RuntimeError(f"No free port found in range {start_port}-{start_port + max_attempts}")
+        raise RuntimeError(
+            f"No free port found in range {start_port}-{start_port + max_attempts}"
+        )
 
     async def _start_endpoint_mcp_server(self):
         """Start Endpoint as MCP server for cross-process package API access.
@@ -209,7 +211,9 @@ class Endpoint(FileTransferToolSet):
         self.endpoint_mcp_port = self._find_free_port(configured_port)
 
         if self.endpoint_mcp_port != configured_port:
-            logger.info(f"Port {configured_port} in use, using port {self.endpoint_mcp_port} instead")
+            logger.info(
+                f"Port {configured_port} in use, using port {self.endpoint_mcp_port} instead"
+            )
 
         mcp_server = self.to_mcp()
 
@@ -234,8 +238,6 @@ class Endpoint(FileTransferToolSet):
         os.environ["ENDPOINT_MCP_URI"] = endpoint_mcp_uri
 
         logger.info(f"Endpoint MCP server started at {endpoint_mcp_uri}")
-
-
 
     def _get_tool_method(self, obj, method_name: str, context: str):
         """Get and validate a tool method from an object."""
@@ -435,6 +437,7 @@ class Endpoint(FileTransferToolSet):
 
 
 async def wait_endpoint_ready(endpoint_service_id: str):
+    from pantheon.remote import connect_remote
     s = await connect_remote(endpoint_service_id)
     while True:
         ready = await s.invoke("services_ready")

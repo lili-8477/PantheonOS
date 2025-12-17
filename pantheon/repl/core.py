@@ -13,14 +13,6 @@ from rich.text import Text
 from rich.live import Live
 from rich.markdown import Markdown
 
-# Pre-import heavy modules to avoid first-call lag
-# These modules have significant import time that would block the event loop
-try:
-    import openai  # noqa: F401
-    import litellm  # noqa: F401
-except ImportError:
-    pass  # Optional dependencies
-
 # prompt_toolkit for enhanced input
 from prompt_toolkit.patch_stdout import patch_stdout
 
@@ -204,10 +196,32 @@ class Repl(ReplUI):
         def signal_handler(signum, frame):
             should_exit = self.handle_interrupt()
             if should_exit:
+                # Ensure terminal settings are restored before exit
+                self._restore_terminal()
                 sys.exit(1)
 
         if hasattr(signal, "SIGINT"):
             signal.signal(signal.SIGINT, signal_handler)
+    
+    def _restore_terminal(self):
+        """Restore terminal settings to normal mode.
+        
+        Called before exit to ensure terminal is in a usable state,
+        especially when exiting from within patch_stdout context.
+        """
+        try:
+            import termios
+            import sys
+            # Restore terminal to canonical mode (cooked mode)
+            if sys.stdin.isatty():
+                fd = sys.stdin.fileno()
+                # Get current terminal attributes
+                old_settings = termios.tcgetattr(fd)
+                # Enable canonical mode and echo
+                old_settings[3] = old_settings[3] | termios.ECHO | termios.ICANON
+                termios.tcsetattr(fd, termios.TCSANOW, old_settings)
+        except Exception:
+            pass  # Silently ignore errors (may not be a TTY or on Windows)
 
     def handle_interrupt(self) -> bool:
         """Handle Ctrl+C interrupt with double-press logic.
@@ -528,6 +542,12 @@ class Repl(ReplUI):
                      self.output.enter_patch_context()
                      # Reinitialize renderers with patched console
                      self._init_renderers()
+                      
+                     # Reconfigure loguru to use patched stdout
+                     # This ensures log output doesn't break the REPL rendering
+                     from loguru import logger as loguru_logger
+                     loguru_logger.remove()
+                     loguru_logger.add(sys.stdout, level="WARNING")
 
                      # Create background processing task
                      processing_task = asyncio.create_task(self._processing_loop())

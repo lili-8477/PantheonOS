@@ -18,7 +18,7 @@ from executor.engine import Engine
 from executor.engine.job import ThreadJob
 from executor.engine.job.extend import SubprocessJob
 
-from pantheon.remote import connect_remote
+
 from pantheon.toolset import ToolSet, tool
 from pantheon.utils.log import logger
 from pantheon.internal.package_runtime.context import export_context, load_context
@@ -179,6 +179,7 @@ class ToolSetManager:
             else:
                 # REMOTE mode: call via remote service
                 logger.debug(f"Using REMOTE mode for {toolset_name}")
+                from pantheon.remote import connect_remote
                 toolset_service = await connect_remote(service_info["id"])
                 return await toolset_service.invoke(method_name, args)
 
@@ -190,6 +191,7 @@ class ToolSetManager:
     async def add_service(self, service_id: str):
         """Add a service to the endpoint."""
         try:
+            from pantheon.remote import connect_remote
             s = await connect_remote(service_id)
             info = await s.fetch_service_info()
             self.services[service_id] = {
@@ -319,6 +321,7 @@ class ToolSetManager:
                             "running" if service_info.get("instance") else "unavailable"
                         )
                     else:
+                        from pantheon.remote import connect_remote
                         await connect_remote(service_id)
                         status = "running"
                 except Exception:
@@ -470,6 +473,7 @@ class ToolSetManager:
     ) -> bool:
         """Try to connect to a service and register it if successful."""
         try:
+            from pantheon.remote import connect_remote
             s = await connect_remote(service_id)
             info = await s.fetch_service_info()
 

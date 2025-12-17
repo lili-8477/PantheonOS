@@ -7,12 +7,13 @@ This module provides a proxy layer between Agents and ToolSets, enabling:
 - Unified access to endpoint-routed or direct toolset connections
 """
 
-import asyncio
-from typing import Dict, List, Optional, Any, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Any, Union
 from enum import Enum
 
 from pantheon.utils.log import logger
-from pantheon.remote import RemoteService
+
+if TYPE_CHECKING:
+    from pantheon.remote import RemoteService
 
 
 class ProxyMode(Enum):
@@ -127,7 +128,7 @@ class ToolsetProxy:
     @classmethod
     def from_endpoint(
         cls,
-        endpoint: Union[str, RemoteService, Any],
+        endpoint: Union[str, "RemoteService", Any],
         toolset_name: str,
     ):
         """Create proxy routing through endpoint (recommended).
@@ -145,7 +146,8 @@ class ToolsetProxy:
 
         # Case 2: RemoteService instance (e.g., NATSService)
         # Use service directly, avoid reconnecting
-        elif isinstance(endpoint, RemoteService):
+        from pantheon.remote import RemoteService
+        if isinstance(endpoint, RemoteService):
             proxy = cls(
                 mode=ProxyMode.ENDPOINT_ID,
                 toolset_name=toolset_name,
@@ -166,7 +168,7 @@ class ToolsetProxy:
     @classmethod
     def from_toolset(
         cls,
-        service_or_id: Union[str, RemoteService],
+        service_or_id: Union[str, "RemoteService"],
     ):
         """Create proxy with direct toolset connection (bypass endpoint, legacy).
 
@@ -183,7 +185,8 @@ class ToolsetProxy:
 
         # Case 2: RemoteService instance
         # Use service directly, avoid reconnecting
-        elif isinstance(service_or_id, RemoteService):
+        from pantheon.remote import RemoteService
+        if isinstance(service_or_id, RemoteService):
             proxy = cls(
                 mode=ProxyMode.TOOLSET_ID,
                 toolset_name=service_or_id.service_id,
@@ -194,10 +197,9 @@ class ToolsetProxy:
             return proxy
 
         # Case 3: Unknown type - fallback
-        else:
-            raise TypeError(
-                f"service_or_id must be str or RemoteService, got {type(service_or_id)}"
-            )
+        raise TypeError(
+            f"service_or_id must be str or RemoteService, got {type(service_or_id)}"
+        )
 
     async def _ensure_connected(self):
         """Ensure connection established (lazy connect for ENDPOINT_ID/TOOLSET_ID modes)."""

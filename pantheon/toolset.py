@@ -13,7 +13,7 @@ from funcdesc import parse_func
 import pantheon.utils.log as log
 from pantheon.utils.log import logger
 
-from .remote import RemoteBackendFactory
+
 from .utils.misc import run_func
 
 
@@ -347,6 +347,7 @@ class ToolSet(ABC):
         if remote:
             # ===== Remote mode: Start RemoteWorker =====
             # Create backend and worker in run method
+            from .remote import RemoteBackendFactory
             self._backend = RemoteBackendFactory.create_backend()
             self.worker = self._backend.create_worker(
                 self._service_name, **self._worker_kwargs

@@ -4,7 +4,6 @@ import uuid
 from pathlib import Path
 
 from pantheon.endpoint import Endpoint
-from pantheon.remote import connect_remote
 from pantheon.utils.misc import generate_service_id
 from pantheon.utils.log import logger
 
@@ -16,6 +15,7 @@ async def _start_endpoint_process(
     workspace_path: str,
     log_dir: Path,
 ) -> str:
+    from pantheon.remote import connect_remote
     """
     Start Endpoint in independent subprocess.
 

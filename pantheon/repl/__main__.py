@@ -76,6 +76,22 @@ def start(
     )
 
 
+async def _update_litellm_cost_map():
+    """Background task to update litellm model cost map.
+    
+    This runs after startup to fetch the latest model pricing data
+    from GitHub without blocking the UI.
+    """
+    try:
+        await asyncio.sleep(2)  # Wait for REPL to fully initialize
+        from litellm import get_model_cost_map
+        # This will fetch from GitHub since LITELLM_LOCAL_MODEL_COST_MAP=True
+        # only prevents the SYNCHRONOUS fetch on import
+        get_model_cost_map(url="https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json")
+    except Exception:
+        pass  # Silently ignore - this is a best-effort background update
+
+
 async def _start_async(
     template: str = None,
     memory_dir: str = None,
@@ -106,6 +122,18 @@ async def _start_async(
     else:
         # Default to WARNING level
         set_level("WARNING")
+    
+    # Suppress FastMCP and Uvicorn logs unless explicitly debugging
+    # Must be set BEFORE ChatRoom/Endpoint initialization starts MCP servers
+    if log_level != "DEBUG":
+        # FastMCP uses its own global settings for logging
+        # Set via environment variable to avoid importing fastmcp here
+        os.environ.setdefault("FASTMCP_LOG_LEVEL", "WARNING")
+        
+        # Also set Python logging for uvicorn
+        logging.getLogger("FastMCP").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
     # Use original CWD as workspace if not specified
     # This ensures file operations work relative to user's launch directory
@@ -161,17 +189,27 @@ async def _start_async(
             chat_id=chat_id,
         )
 
-    # Suppress FastMCP and Uvicorn logs unless explicitly debugging
-    # specific libraries that use standard logging
+    # Suppress CancelledError traceback from uvicorn during REPL shutdown
+    # This is a benign error that occurs when uvicorn's lifespan is cancelled
     if log_level != "DEBUG":
-        # FastMCP uses a custom logger globally configured on import
-        # We must suppress "FastMCP" (capitalized) not "fastmcp"
-        logging.getLogger("FastMCP").setLevel(logging.WARNING)
-        logging.getLogger("uvicorn").setLevel(logging.WARNING)
-        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+        class _SuppressCancelledErrorFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                # Check exc_info
+                if record.exc_info and isinstance(record.exc_info[1], asyncio.CancelledError):
+                    return False
+                # Check message content (traceback may be formatted as message)
+                msg = record.getMessage() if hasattr(record, 'getMessage') else str(getattr(record, 'msg', ''))
+                if 'CancelledError' in msg:
+                    return False
+                return True
+        logging.getLogger("uvicorn.error").addFilter(_SuppressCancelledErrorFilter())
 
     # Disable logging unless explicitly set to DEBUG
     disable_logging = quiet and log_level != "DEBUG"
+    
+    # Start background task to update litellm cost map (non-blocking)
+    asyncio.create_task(_update_litellm_cost_map())
+    
     await repl.run(disable_logging=disable_logging)
 
 
