@@ -939,7 +939,18 @@ class Repl(ReplUI):
                                 # Update Task UI
                                 if "task_boundary" in tool_name:
                                     self.task_ui_renderer.update_task_boundary(args)
-                                elif "notify_user" not in tool_name:
+                                elif "notify_user" in tool_name:
+                                    self.task_ui_renderer.on_notify_user()
+                                    
+                                    # Render notification immediately using arguments
+                                    # specific mapping for notify_user args -> renderer format
+                                    notification_data = {
+                                        "message": args.get("Message", ""),
+                                        "paths": args.get("PathsToReview", []),
+                                        "interrupt": args.get("BlockedOnUser", False)
+                                    }
+                                    self.notify_ui_renderer.render_notification(notification_data)
+                                else:
                                     # Add tool to recent activity (skip notify_user - has its own UI)
                                     self.task_ui_renderer.add_tool_call(tool_name, args=args, is_running=True)
                                 
@@ -957,12 +968,7 @@ class Repl(ReplUI):
                         
                         # Handle notify_user result
                         if "notify_user" in tool_name:
-                            raw_content = step.get("raw_content", {})
-                            if isinstance(raw_content, dict):
-                                # First: print static Task UI summary
-                                self.task_ui_renderer.on_notify_user()
-                                # Then: show notification UI for user interaction
-                                blocked = self.notify_ui_renderer.render_notification(raw_content)
+                            pass # Handled in tool_calls phase
 
                         # Prefer raw_content if available (original dict)
                         raw_content = step.get("raw_content")

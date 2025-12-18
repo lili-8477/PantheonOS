@@ -307,6 +307,20 @@ class TestNotifyUIRenderer:
         blocked = renderer.render_notification(result)
         assert blocked is True
 
+    def test_render_notification_string_paths(self, renderer):
+        """Regression test for single string path handling."""
+        result = {
+            "success": True,
+            "message": "Review this",
+            "paths": "/path/to/file.txt",
+            "interrupt": False
+        }
+        
+        # Should not raise error and should handle string path gracefullly
+        blocked = renderer.render_notification(result)
+        assert blocked is False
+
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -567,6 +567,9 @@ class NotifyUIRenderer:
         paths = result.get("paths", [])
         blocked = result.get("interrupt", False)
         
+        if isinstance(paths, str):
+            paths = [paths]
+        
         # Build content
         content_parts = []
         
