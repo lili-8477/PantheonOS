@@ -1,26 +1,28 @@
 """
-VectorStoreBackend - 向量存储后端
+VectorStoreBackend - Vector Store Backend
 
-职责：
-- 管理 Qdrant 客户端（sync + async）
-- Embedding 模型
-- 文档分块（Node Parser）
-- 索引构建和持久化
-- 向量检索（混合搜索 + Reranking）
+Responsibilities:
+- Manage Qdrant clients (sync + async)
+- Embedding model
+- Document chunking (Node Parser)
+- Index building and persistence
+- Vector retrieval (hybrid search + reranking)
 """
 
 import os
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, TYPE_CHECKING
 
-from llama_index.core.schema import TextNode, NodeWithScore
 from pantheon.utils.log import logger
+
+if TYPE_CHECKING:
+    from llama_index.core.schema import TextNode, NodeWithScore
 
 
 class VectorStoreBackend:
     """
-    向量存储后端，封装 Qdrant + LlamaIndex 的所有操作
+    Vector store backend that encapsulates all Qdrant + LlamaIndex operations.
     """
 
     def __init__(
@@ -32,14 +34,14 @@ class VectorStoreBackend:
         retrieval_config: Dict[str, Any],
     ):
         """
-        初始化向量存储后端
+        Initialize the vector store backend.
 
         Args:
-            qdrant_params: Qdrant 客户端参数（从 get_qdrant_params 获取）
-            storage_path: 存储路径（用于索引文件）
-            embedding_config: Embedding 配置
-            chunking_config: 分块配置
-            retrieval_config: 检索配置
+            qdrant_params: Qdrant client parameters (from get_qdrant_params)
+            storage_path: Storage path (for index files)
+            embedding_config: Embedding configuration
+            chunking_config: Chunking configuration
+            retrieval_config: Retrieval configuration
         """
         self.qdrant_params = qdrant_params
         self.storage_path = storage_path
@@ -47,7 +49,7 @@ class VectorStoreBackend:
         self.chunking_config = chunking_config
         self.retrieval_config = retrieval_config
 
-        # 延迟初始化的组件
+        # Lazily initialized components
         self._qdrant_client = None
         self._qdrant_aclient = None
         self._use_async = False
@@ -58,11 +60,11 @@ class VectorStoreBackend:
 
     async def setup(self):
         """
-        初始化所有组件（延迟加载）
+        Initialize all components (lazy loading).
 
-        包括：
-        - Qdrant 客户端
-        - Embedding 模型
+        Includes:
+        - Qdrant client
+        - Embedding model
         - Node Parser
         - Reranker
         """
@@ -77,9 +79,9 @@ class VectorStoreBackend:
             from llama_index.core.node_parser import SemanticSplitterNodeParser
             from llama_index.postprocessor.flashrank_rerank import FlashRankRerank
 
-            # 1. 初始化 Qdrant 客户端
+            # 1. Initialize Qdrant client
             if "url" in self.qdrant_params:
-                # URL 模式：创建 sync + async 客户端
+                # URL mode: create sync + async clients
                 self._qdrant_client = QdrantClient(**self.qdrant_params)
                 self._qdrant_aclient = AsyncQdrantClient(**self.qdrant_params)
                 self._use_async = True
@@ -87,7 +89,7 @@ class VectorStoreBackend:
                     f"Qdrant clients initialized (URL mode) at: {self.qdrant_params['url']}"
                 )
             else:
-                # 本地模式（path 或 :memory:）：只创建同步客户端
+                # Local mode (path or :memory:): create sync client only
                 self._qdrant_client = QdrantClient(**self.qdrant_params)
                 self._qdrant_aclient = None
                 self._use_async = False
@@ -96,7 +98,7 @@ class VectorStoreBackend:
                 )
                 logger.info(f"Qdrant client initialized (local mode) at: {location}")
 
-            # 2. 初始化 Embedding 模型
+            # 2. Initialize embedding model
             from pantheon.settings import get_settings
             settings = get_settings()
             
@@ -113,7 +115,7 @@ class VectorStoreBackend:
                 f"Embedding model initialized: {self.embedding_config['model']}"
             )
 
-            # 3. 初始化 Node Parser (Semantic Chunking)
+            # 3. Initialize Node Parser (Semantic Chunking)
             self._node_parser = SemanticSplitterNodeParser(
                 buffer_size=self.chunking_config["buffer_size"],
                 breakpoint_percentile_threshold=self.chunking_config[
@@ -123,8 +125,8 @@ class VectorStoreBackend:
             )
             logger.info("Semantic chunking initialized")
 
-            # 4. Reranker 延迟加载（仅在需要时初始化）
-            # 这样可以避免启动时因为模型文件缺失而失败
+            # 4. Reranker lazy loading (initialize only when needed)
+            # This avoids startup failures due to missing model files
             if self.retrieval_config["use_rerank"]:
                 logger.info(
                     f"FlashRank reranker lazy loading enabled for: {self.retrieval_config['rerank_model']}"
@@ -138,23 +140,23 @@ class VectorStoreBackend:
             raise
 
     def build_index_sync(
-        self, collection_id: str, nodes: List[TextNode]
+        self, collection_id: str, nodes: List["TextNode"]
     ) -> Dict[str, Any]:
         """
-        同步构建索引并持久化（在线程池中运行）
+        Build index synchronously and persist (runs in thread pool).
 
         Args:
             collection_id: Collection ID
-            nodes: 文档节点列表
+            nodes: List of document nodes
 
         Returns:
-            结果字典 {"success": bool, "node_count": int}
+            Result dict {"success": bool, "node_count": int}
         """
         try:
             from llama_index.core import VectorStoreIndex, StorageContext
             from llama_index.vector_stores.qdrant import QdrantVectorStore
 
-            # 创建 Qdrant Vector Store
+            # Create Qdrant Vector Store
             qdrant_collection_name = f"collection_{collection_id}"
             vector_store = QdrantVectorStore(
                 collection_name=qdrant_collection_name,
@@ -165,13 +167,13 @@ class VectorStoreBackend:
                 parallel=self.embedding_config.get("parallel", 4),
             )
 
-            # 创建存储上下文
+            # Create storage context
             index_dir = self.storage_path / "indexes" / collection_id
             index_dir.mkdir(parents=True, exist_ok=True)
 
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-            # 构建索引
+            # Build index
             index = VectorStoreIndex(
                 nodes=nodes,
                 storage_context=storage_context,
@@ -180,7 +182,7 @@ class VectorStoreBackend:
                 use_async=self._use_async,
             )
 
-            # 持久化
+            # Persist
             index.storage_context.persist(persist_dir=str(index_dir))
 
             logger.info(
@@ -199,18 +201,18 @@ class VectorStoreBackend:
         query: str,
         top_k: int = 5,
         use_hybrid: bool = True,
-    ) -> List[NodeWithScore]:
+    ) -> List["NodeWithScore"]:
         """
-        在指定 collection 中搜索
+        Search in the specified collection.
 
         Args:
             collection_id: Collection ID
-            query: 查询文本
-            top_k: 返回结果数量
-            use_hybrid: 是否使用混合搜索
+            query: Query text
+            top_k: Number of results to return
+            use_hybrid: Whether to use hybrid search
 
         Returns:
-            搜索结果节点列表
+            List of search result nodes
         """
         results = []
 
@@ -218,7 +220,7 @@ class VectorStoreBackend:
             from llama_index.core import VectorStoreIndex, StorageContext
             from llama_index.vector_stores.qdrant import QdrantVectorStore
 
-            # 加载索引
+            # Load index
             qdrant_collection_name = f"collection_{collection_id}"
             index_dir = self.storage_path / "indexes" / collection_id
 
@@ -242,24 +244,24 @@ class VectorStoreBackend:
                 use_async=self._use_async,
             )
 
-            # 构建检索器
+            # Build retriever
             retriever_kwargs = {"similarity_top_k": top_k}
             if use_hybrid:
                 retriever_kwargs["vector_store_query_mode"] = "hybrid"
                 retriever_kwargs["sparse_top_k"] = self.retrieval_config["sparse_top_k"]
 
-            # 添加 reranker 作为 postprocessor（延迟加载）
+            # Add reranker as postprocessor (lazy loading)
             reranker = self._get_reranker()
             if reranker:
                 retriever_kwargs["node_postprocessors"] = [reranker]
 
             retriever = index.as_retriever(**retriever_kwargs)
 
-            # 执行检索
+            # Execute retrieval
             if self._use_async:
                 nodes = await retriever.aretrieve(query)
             else:
-                # 本地模式：使用 run_in_executor
+                # Local mode: use run_in_executor
                 loop = asyncio.get_event_loop()
                 nodes = await loop.run_in_executor(None, retriever.retrieve, query)
 
@@ -272,18 +274,18 @@ class VectorStoreBackend:
 
     async def delete_collection(self, collection_id: str) -> Dict[str, Any]:
         """
-        删除 collection 的向量数据和索引文件
+        Delete the collection's vector data and index files.
 
         Args:
             collection_id: Collection ID
 
         Returns:
-            结果字典 {"success": bool}
+            Result dict {"success": bool}
         """
         try:
             qdrant_collection_name = f"collection_{collection_id}"
 
-            # 删除 Qdrant collection
+            # Delete Qdrant collection
             if self._use_async:
                 await self._qdrant_aclient.delete_collection(qdrant_collection_name)
             else:
@@ -294,7 +296,7 @@ class VectorStoreBackend:
 
             logger.info(f"Qdrant collection deleted: {qdrant_collection_name}")
 
-            # 删除索引文件
+            # Delete index files
             index_dir = self.storage_path / "indexes" / collection_id
             if index_dir.exists():
                 import shutil
@@ -312,28 +314,28 @@ class VectorStoreBackend:
         self, collection_id: str, source_id: str
     ) -> Dict[str, Any]:
         """
-        删除指定 source 的向量
+        Delete vectors for the specified source.
 
         Args:
             collection_id: Collection ID
             source_id: Source ID
 
         Returns:
-            结果字典 {"success": bool, "deleted_count": int}
+            Result dict {"success": bool, "deleted_count": int}
         """
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
 
             qdrant_collection_name = f"collection_{collection_id}"
 
-            # 构建过滤器
+            # Build filter
             filter_condition = Filter(
                 must=[
                     FieldCondition(key="source_id", match=MatchValue(value=source_id))
                 ]
             )
 
-            # 删除向量
+            # Delete vectors
             if self._use_async:
                 result = await self._qdrant_aclient.delete(
                     collection_name=qdrant_collection_name,
@@ -360,16 +362,16 @@ class VectorStoreBackend:
 
     def _get_reranker(self):
         """
-        延迟加载 Reranker
-        仅在第一次需要时初始化，避免启动时模型加载失败
+        Lazy load the reranker.
+        Only initialize on first use to avoid startup failures due to missing models.
 
         Returns:
-            FlashRankRerank 实例或 None
+            FlashRankRerank instance or None
         """
         if not self.retrieval_config["use_rerank"]:
             return None
 
-        # 如果已经初始化过，直接返回
+        # Return immediately if already initialized
         if self._reranker is not None:
             return self._reranker
 
@@ -387,24 +389,24 @@ class VectorStoreBackend:
             logger.warning(f"Failed to initialize reranker, continuing without reranking: {e}")
             return None
 
-    def parse_nodes(self, documents: List) -> List[TextNode]:
+    def parse_nodes(self, documents: List) -> List["TextNode"]:
         """
-        将文档解析为节点（分块）
+        Parse documents into nodes (chunking).
 
         Args:
-            documents: LlamaIndex Document 列表
+            documents: List of LlamaIndex Documents
 
         Returns:
-            节点列表
+            List of nodes
         """
         return self._node_parser.get_nodes_from_documents(documents)
 
     def close(self):
-        """关闭客户端连接"""
+        """Close client connections."""
         if self._qdrant_client:
             self._qdrant_client.close()
 
     async def aclose(self):
-        """异步关闭客户端连接"""
+        """Close client connections asynchronously."""
         if self._qdrant_aclient:
             await self._qdrant_aclient.close()

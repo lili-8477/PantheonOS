@@ -5,7 +5,7 @@ from .factory import RemoteBackendFactory, RemoteConfig
 from .remote import connect_remote
 from .backend.nats import NATSBackend
 
-# 统一远程后端接口
+# Unified remote backend interface
 __all__ = [
     "connect_remote",
     "RemoteConfig",
@@ -14,7 +14,7 @@ __all__ = [
     "RemoteService",
     "RemoteWorker",
     "BackendRegistry",
-    # 统一后的后端实现
+    # Unified backend implementation
     "NATSBackend",
     "StreamType",
     "StreamMessage",

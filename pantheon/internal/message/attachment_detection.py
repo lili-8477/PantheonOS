@@ -199,12 +199,12 @@ class ImageDetector(AttachmentDetector):
         return attachments
 
     async def _detect_base64_in_content(self, content: str) -> List[DetectedAttachment]:
-        """✅ 通过正则在 content 字符串中检测 base64 图片数据"""
+        """Detect base64 image data in content string via regex."""
         attachments = []
         seen = set()
 
-        # 匹配 base64 模式：以 PNG/JPEG/GIF magic number 开头，后跟 base64 字符
-        # ✅ OPTIMIZATION: Using pre-compiled patterns
+        # Match base64 pattern: starts with PNG/JPEG/GIF magic number, followed by base64 chars
+        # OPTIMIZATION: Using pre-compiled patterns
         patterns = [
             (self._PATTERN_BASE64_MAGIC_PNG, 'png', 'PNG image'),
             (self._PATTERN_BASE64_MAGIC_JPEG, 'jpeg', 'JPEG image'),
@@ -216,12 +216,12 @@ class ImageDetector(AttachmentDetector):
             for match in matches:
                 base64_data = match.group(1)
 
-                # 避免重复
+                # Avoid duplicates
                 if base64_data in seen:
                     continue
                 seen.add(base64_data)
 
-                # 长度合理性检查（base64 编码的图片通常 > 100 字符）
+                # Length sanity check (base64 encoded images usually > 100 chars)
                 if len(base64_data) < 100:
                     continue
 
@@ -233,7 +233,7 @@ class ImageDetector(AttachmentDetector):
                         name=f"embedded_{ext}_image",
                         mime_type=f"image/{ext}",
                         detected_from="base64_in_content",
-                        confidence=0.75,  # 中等置信度（在字符串中检测）
+                        confidence=0.75,  # Medium confidence (detected in string)
                     )
                     attachments.append(att)
                 except (ValueError, OSError):

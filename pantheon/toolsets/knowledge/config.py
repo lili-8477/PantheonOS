@@ -1,10 +1,10 @@
 """
-Knowledge Base 配置加载
+Knowledge Base Configuration Loading
 
-配置优先级（从低到高）：
-1. config.yaml 默认配置文件
-2. 用户指定的配置文件（如果提供）
-3. 环境变量覆盖
+Configuration priority (low to high):
+1. config.yaml default configuration file
+2. User-specified configuration file (if provided)
+3. Environment variable overrides
 """
 import os
 from pathlib import Path
@@ -14,8 +14,8 @@ import yaml
 
 def expand_path(path: str, context: Dict[str, str]) -> str:
     """
-    展开路径中的变量
-    例如: ${storage_path}/qdrant_storage -> /home/user/.pantheon-knowledge/qdrant_storage
+    Expand variables in path.
+    Example: ${storage_path}/qdrant_storage -> /home/user/.pantheon-knowledge/qdrant_storage
     """
     for key, value in context.items():
         path = path.replace(f"${{{key}}}", value)
@@ -23,7 +23,7 @@ def expand_path(path: str, context: Dict[str, str]) -> str:
 
 
 def deep_update(base_dict: Dict, update_dict: Dict) -> None:
-    """深度合并字典（就地修改 base_dict）"""
+    """Deep merge dictionaries (modifies base_dict in place)."""
     for key, value in update_dict.items():
         if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
             deep_update(base_dict[key], value)
@@ -33,29 +33,29 @@ def deep_update(base_dict: Dict, update_dict: Dict) -> None:
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     """
-    加载配置文件
+    Load configuration file.
 
-    配置加载顺序：
-    1. 尝试从 Settings 模块加载（.pantheon/settings.json）
-    2. 加载 knowledge/config.yaml 作为默认配置
-    3. 如果提供 config_path，深度合并用户配置
-    4. 使用环境变量覆盖特定字段
+    Configuration loading order:
+    1. Try to load from Settings module (.pantheon/settings.json)
+    2. Load knowledge/config.yaml as default configuration
+    3. If config_path provided, deep merge user configuration
+    4. Override specific fields with environment variables
 
     Args:
-        config_path: 用户配置文件路径（可选）
+        config_path: User configuration file path (optional)
 
     Returns:
-        配置字典
+        Configuration dictionary
 
-    环境变量覆盖：
-        QDRANT_LOCATION: 覆盖 qdrant.location
-        QDRANT_PATH: 覆盖 qdrant.path
-        QDRANT_API_KEY: 覆盖 qdrant.api_key
-        QDRANT_PREFER_GRPC: 覆盖 qdrant.prefer_grpc
+    Environment variable overrides:
+        QDRANT_LOCATION: Override qdrant.location
+        QDRANT_PATH: Override qdrant.path
+        QDRANT_API_KEY: Override qdrant.api_key
+        QDRANT_PREFER_GRPC: Override qdrant.prefer_grpc
     """
     import copy
 
-    # 1. 尝试从 Settings 模块加载
+    # 1. Try to load from Settings module
     settings_knowledge_config = None
     try:
         from pantheon.settings import get_settings
@@ -64,23 +64,23 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # 2. 加载默认配置文件 (knowledge/config.yaml)
+    # 2. Load default config file (knowledge/config.yaml)
     default_config_path = Path(__file__).parent / "config.yaml"
     with open(default_config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
-    # 3. 如果 Settings 模块加载成功，合并配置
+    # 3. If Settings module loaded successfully, merge configuration
     if settings_knowledge_config:
-        # 合并 storage_path
+        # Merge storage_path
         if settings_knowledge_config.get("storage_path"):
             config["knowledge"]["storage_path"] = settings_knowledge_config["storage_path"]
-        # 合并 qdrant 配置
+        # Merge qdrant config
         qdrant_settings = settings_knowledge_config.get("qdrant", {})
         for key, value in qdrant_settings.items():
             if value is not None:
                 config["knowledge"]["qdrant"][key] = value
 
-    # 4. 如果提供了用户配置文件，深度合并
+    # 4. If user config file provided, deep merge
     if config_path and os.path.exists(config_path):
         with open(config_path, 'r', encoding='utf-8') as f:
             user_config = yaml.safe_load(f)
@@ -89,8 +89,8 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     knowledge_config = config["knowledge"]
 
-    # 5. 环境变量覆盖（优先级最高）
-    # 注意：此时还未展开路径变量，环境变量可以包含变量
+    # 5. Environment variable overrides (highest priority)
+    # Note: Path variables not expanded yet, env vars can contain variables
     if os.getenv("QDRANT_LOCATION"):
         knowledge_config["qdrant"]["location"] = os.getenv("QDRANT_LOCATION")
 
@@ -103,31 +103,31 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     if os.getenv("QDRANT_PREFER_GRPC"):
         knowledge_config["qdrant"]["prefer_grpc"] = os.getenv("QDRANT_PREFER_GRPC").lower() == "true"
 
-    # 4. 展开路径变量
+    # Expand path variables
     storage_path = os.path.expanduser(knowledge_config["storage_path"])
     context = {"storage_path": storage_path}
 
-    # 展开 qdrant.location（如果包含变量）
+    # Expand qdrant.location (if contains variables)
     if knowledge_config["qdrant"]["location"]:
         location = knowledge_config["qdrant"]["location"]
         if isinstance(location, str):
             knowledge_config["qdrant"]["location"] = expand_path(location, context)
 
-    # 展开 qdrant.path（如果存在且不为空）
+    # Expand qdrant.path (if exists and not empty)
     if knowledge_config["qdrant"]["path"]:
         knowledge_config["qdrant"]["path"] = expand_path(
             knowledge_config["qdrant"]["path"], context
         )
 
-    # 展开 metadata.path
+    # Expand metadata.path
     knowledge_config["metadata"]["path"] = expand_path(
         knowledge_config["metadata"]["path"], context
     )
 
-    # 5. 确保必要的目录存在
+    # Ensure necessary directories exist
     Path(storage_path).mkdir(parents=True, exist_ok=True)
 
-    # 如果 location 是本地路径（不是 :memory: 也不是 URL），创建目录
+    # If location is local path (not :memory: and not URL), create directory
     location = knowledge_config["qdrant"]["location"]
     if location and location != ":memory:" and not location.startswith("http"):
         Path(location).mkdir(parents=True, exist_ok=True)
@@ -136,7 +136,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
 
 def get_storage_path(config: Optional[Dict[str, Any]] = None) -> Path:
-    """获取存储路径"""
+    """Get storage path."""
     if config is None:
         config = load_config()
     return Path(os.path.expanduser(config["knowledge"]["storage_path"]))
@@ -144,41 +144,41 @@ def get_storage_path(config: Optional[Dict[str, Any]] = None) -> Path:
 
 def get_qdrant_params(config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    从配置中提取 Qdrant 客户端参数
+    Extract Qdrant client parameters from configuration.
 
-    返回可直接传递给 QdrantClient 的参数字典
+    Returns a parameter dict that can be passed directly to QdrantClient.
 
-    Qdrant 客户端支持的参数：
-    - location: str | None - 存储位置（":memory:", 本地路径, 或留空用 url）
-    - url: str | None - 远程服务器 URL
-    - path: str | None - 本地存储路径（已废弃，使用 location）
+    Qdrant client supported parameters:
+    - location: str | None - Storage location (":memory:", local path, or empty for url)
+    - url: str | None - Remote server URL
+    - path: str | None - Local storage path (deprecated, use location)
     - api_key: str | None - API key
-    - prefer_grpc: bool - 是否使用 gRPC
+    - prefer_grpc: bool - Whether to use gRPC
     """
     qdrant_config = config["knowledge"]["qdrant"]
     params = {}
 
     location = qdrant_config.get("location")
 
-    # 判断 location 类型
+    # Determine location type
     if location == ":memory:":
-        # 内存模式
+        # Memory mode
         params["location"] = ":memory:"
     elif location and location.startswith("http"):
-        # URL 模式（远程服务器）
+        # URL mode (remote server)
         params["url"] = location
         if qdrant_config.get("api_key"):
             params["api_key"] = qdrant_config["api_key"]
         if qdrant_config.get("prefer_grpc"):
             params["prefer_grpc"] = qdrant_config["prefer_grpc"]
     elif location:
-        # 本地路径模式
+        # Local path mode
         params["path"] = location
     elif qdrant_config.get("path"):
-        # 向后兼容：如果没有 location 但有 path
+        # Backward compatibility: if no location but has path
         params["path"] = qdrant_config["path"]
     else:
-        # 默认使用内存模式
+        # Default to memory mode
         params["location"] = ":memory:"
 
     return params

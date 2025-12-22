@@ -1,5 +1,5 @@
 """
-Knowledge Base Manager - 知识库管理核心类
+Knowledge Base Manager - Core knowledge base management class.
 """
 
 import asyncio
@@ -20,25 +20,25 @@ from .vector_store import VectorStoreBackend
 
 class KnowledgeToolSet(ToolSet):
     """
-    知识库管理 ToolSet
+    Knowledge Base Management ToolSet.
 
-    职责:
-    - 管理 Collections 和 Sources 的 CRUD 操作
-    - 文档加载、解析、分块、索引
-    - 混合检索 (Vector + BM25 + Reranking)
-    - 元数据提取和过滤
-    - 异步任务管理和进度跟踪
+    Responsibilities:
+    - Manage CRUD operations for Collections and Sources
+    - Document loading, parsing, chunking, and indexing
+    - Hybrid retrieval (Vector + BM25 + Reranking)
+    - Metadata extraction and filtering
+    - Async task management and progress tracking
     """
 
     def __init__(self, config_path: str = None, name="knowledge", **kwargs):
         super().__init__(name=name, **kwargs)
 
-        # 加载配置
+        # Load configuration
         self.config = load_config(config_path)
         self.knowledge_config = self.config["knowledge"]
         self.storage_path = get_storage_path(self.config)
 
-        # 元数据文件路径
+        # Metadata file path
         self.metadata_path = Path(self.knowledge_config["metadata"]["path"])
         self._metadata: Dict[str, Any] = {
             "collections": {},
@@ -46,11 +46,11 @@ class KnowledgeToolSet(ToolSet):
             "chat_configs": {},
         }
 
-        # 异步任务跟踪 (内存)
+        # Async task tracking (in memory)
         self._source_tasks: Dict[str, asyncio.Task] = {}
         self._source_status: Dict[str, Dict[str, Any]] = {}
 
-        # 向量存储后端（延迟初始化）
+        # Vector store backend (lazy initialization)
         self._vector_store: Optional[VectorStoreBackend] = None
         self._setup_completed = False
 
@@ -59,14 +59,14 @@ class KnowledgeToolSet(ToolSet):
         )
 
     async def run_setup(self):
-        """初始化组件 (延迟加载)"""
+        """Initialize components (lazy loading)."""
         if self._setup_completed:
             return
 
         logger.info("Setting up KnowledgeManager components...")
 
         try:
-            # 创建向量存储后端
+            # Create vector store backend
             qdrant_params = get_qdrant_params(self.config)
             self._vector_store = VectorStoreBackend(
                 qdrant_params=qdrant_params,
@@ -76,14 +76,14 @@ class KnowledgeToolSet(ToolSet):
                 retrieval_config=self.knowledge_config["retrieval"],
             )
 
-            # 初始化后端组件
+            # Initialize backend components
             await self._vector_store.setup()
 
-            # 初始化 Metadata Extractors (保留在 KnowledgeManager 中)
+            # Initialize Metadata Extractors (kept in KnowledgeManager)
             metadata_config = self.knowledge_config.get("metadata", {})
             self._metadata_extractors = []
 
-            # 创建 LLM 实例的辅助函数（支持自定义 API base）
+            # Helper function to create LLM instance (supports custom API base)
             def _create_llm():
                 from llama_index.llms.openai import OpenAI
                 from pantheon.settings import get_settings
@@ -99,7 +99,7 @@ class KnowledgeToolSet(ToolSet):
                     llm_kwargs["api_base"] = api_base
                 return OpenAI(**llm_kwargs)
 
-            # 标题提取器（需要明确启用，因为需要 LLM）
+            # Title extractor (requires explicit enable, needs LLM)
             if metadata_config.get("extract_title", False):
                 try:
                     from llama_index.core.extractors import TitleExtractor
@@ -111,14 +111,14 @@ class KnowledgeToolSet(ToolSet):
                         "llama-index-llms-openai not installed, skipping TitleExtractor"
                     )
 
-            # 关键词提取器（需要 LLM）
+            # Keyword extractor (requires LLM)
             if metadata_config.get("extract_keywords", False):
                 from llama_index.core.extractors import KeywordExtractor
 
                 llm = _create_llm()
                 self._metadata_extractors.append(KeywordExtractor(keywords=5, llm=llm))
 
-            # 摘要提取器（需要 LLM，较重）
+            # Summary extractor (requires LLM, heavier)
             if metadata_config.get("extract_summary", False):
                 from llama_index.core.extractors import SummaryExtractor
 
@@ -132,7 +132,7 @@ class KnowledgeToolSet(ToolSet):
                     f"Initialized {len(self._metadata_extractors)} metadata extractors"
                 )
 
-            # 加载元数据
+            # Load metadata
             self._load_metadata()
 
             self._setup_completed = True
@@ -145,11 +145,11 @@ class KnowledgeToolSet(ToolSet):
             raise
 
     # ============================================================================
-    # 内部方法 - 元数据管理
+    # Internal Methods - Metadata Management
     # ============================================================================
 
     def _load_metadata(self):
-        """加载元数据从 JSON 文件"""
+        """Load metadata from JSON file."""
         if self.metadata_path.exists():
             try:
                 with open(self.metadata_path, "r", encoding="utf-8") as f:
@@ -164,14 +164,14 @@ class KnowledgeToolSet(ToolSet):
             self._save_metadata()
 
     def _save_metadata(self):
-        """保存元数据到 JSON 文件 (原子写入)"""
+        """Save metadata to JSON file (atomic write)."""
         try:
-            # 先写临时文件
+            # Write to temporary file first
             temp_path = self.metadata_path.with_suffix(".tmp")
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(self._metadata, f, indent=2, ensure_ascii=False)
 
-            # 原子替换
+            # Atomic replace
             temp_path.replace(self.metadata_path)
             logger.debug("Metadata saved successfully")
         except Exception as e:
@@ -179,42 +179,42 @@ class KnowledgeToolSet(ToolSet):
             raise
 
     def _get_collection(self, collection_id: str) -> Optional[CollectionInfo]:
-        """获取集合信息"""
+        """Get collection info."""
         data = self._metadata["collections"].get(collection_id)
         return CollectionInfo.from_dict(data) if data else None
 
     def _get_source(self, source_id: str) -> Optional[SourceInfo]:
-        """获取源信息"""
+        """Get source info."""
         data = self._metadata["sources"].get(source_id)
         return SourceInfo.from_dict(data) if data else None
 
     def _get_chat_config(self, chat_id: str) -> ChatKnowledgeConfig:
-        """获取 Chat 配置"""
+        """Get chat configuration."""
         data = self._metadata["chat_configs"].get(chat_id)
         if data:
             return ChatKnowledgeConfig.from_dict(data)
         else:
-            # 创建默认配置
+            # Create default config
             config = ChatKnowledgeConfig(chat_id=chat_id)
             self._metadata["chat_configs"][chat_id] = config.to_dict()
             self._save_metadata()
             return config
 
     # ============================================================================
-    # Tool 方法 - Collection 管理 (3个)
+    # Tool Methods - Collection Management (3)
     # ============================================================================
 
     @tool(exclude=True)
     async def list_collections(self) -> dict:
         """
-        列出所有集合
+        List all collections.
 
         Returns:
             {
                 "success": bool,
                 "collections": List[CollectionInfo],
                 "total": int,
-                "active_for_chat": List[str]  # 当前 session 激活的集合
+                "active_for_chat": List[str]  # Active collections for current session
             }
         """
         try:
@@ -244,11 +244,11 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def create_collection(self, name: str, description: str = "") -> dict:
         """
-        创建新集合
+        Create a new collection.
 
         Args:
-            name: 集合名称
-            description: 集合描述
+            name: Collection name
+            description: Collection description
 
         Returns:
             {
@@ -286,10 +286,10 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def delete_collection(self, collection_id: str) -> dict:
         """
-        删除集合
+        Delete a collection.
 
         Args:
-            collection_id: 集合 ID
+            collection_id: Collection ID
 
         Returns:
             {"success": bool}
@@ -300,22 +300,22 @@ class KnowledgeToolSet(ToolSet):
 
             collection = self._get_collection(collection_id)
 
-            # 删除所有关联的 sources
+            # Delete all associated sources
             for source_id in collection.source_ids:
                 if source_id in self._metadata["sources"]:
                     del self._metadata["sources"][source_id]
 
-            # 删除集合
+            # Delete collection
             del self._metadata["collections"][collection_id]
 
-            # 从所有 chat configs 中移除
+            # Remove from all chat configs
             for chat_config_data in self._metadata["chat_configs"].values():
                 if collection_id in chat_config_data["active_collection_ids"]:
                     chat_config_data["active_collection_ids"].remove(collection_id)
 
             self._save_metadata()
 
-            # 使用 VectorStoreBackend 删除向量数据和索引
+            # Use VectorStoreBackend to delete vector data and indexes
             await self._vector_store.delete_collection(collection_id)
 
             logger.info(f"Collection deleted: {collection_id}")
@@ -327,34 +327,34 @@ class KnowledgeToolSet(ToolSet):
             return {"success": False, "error": str(e)}
 
     # ============================================================================
-    # Tool 方法 - Source 管理 (3个，简化版)
+    # Tool Methods - Source Management (3, simplified)
     # ============================================================================
 
     @tool(exclude=True)
     async def add_sources(self, collection_id: str, sources: list[dict] | dict) -> dict:
         """
-        添加源到集合（支持单个或批量，后台异步处理）
+        Add sources to a collection (supports single or batch, async background processing).
 
         Args:
-            collection_id: 集合 ID
-            sources: 单个源对象或源列表
-                - 单个: {"type": "file"|"folder"|"url", "path": str, "name": str(optional)}
-                - 批量: [{"type": "file"|"folder"|"url", "path": str, "name": str(optional)}, ...]
+            collection_id: Collection ID
+            sources: Single source object or list of sources
+                - Single: {"type": "file"|"folder"|"url", "path": str, "name": str(optional)}
+                - Batch: [{"type": "file"|"folder"|"url", "path": str, "name": str(optional)}, ...]
 
         Returns:
             {
                 "success": bool,
-                "source_ids": list[str],  # 单个源时也返回列表（包含1个元素）
+                "source_ids": list[str],  # Returns list even for single source (contains 1 element)
                 "message": str
             }
         """
         try:
-            # 检查集合是否存在
+            # Check if collection exists
             collection = self._get_collection(collection_id)
             if not collection:
                 return {"success": False, "error": "Collection not found"}
 
-            # 标准化输入：统一转为列表处理
+            # Normalize input: convert to list for uniform processing
             sources_list = [sources] if isinstance(sources, dict) else sources
 
             source_ids = []
@@ -368,7 +368,7 @@ class KnowledgeToolSet(ToolSet):
                         logger.warning(f"Invalid source data: {source_data}")
                         continue
 
-                    # 创建 source
+                    # Create source
                     source_id = f"src_{uuid.uuid4().hex[:16]}"
                     source_name = name or Path(path).name
 
@@ -384,12 +384,12 @@ class KnowledgeToolSet(ToolSet):
                         added_at=datetime.now().timestamp(),
                     )
 
-                    # 保存到元数据
+                    # Save to metadata
                     self._metadata["sources"][source_id] = source.to_dict()
                     collection.source_ids.append(source_id)
                     source_ids.append(source_id)
 
-                    # 启动后台任务处理文档索引（文档加载在线程池中运行，不阻塞事件循环）
+                    # Start background task for document indexing (document loading runs in thread pool, non-blocking)
                     task = asyncio.create_task(self._process_source_async(source_id))
                     self._source_tasks[source_id] = task
 
@@ -399,7 +399,7 @@ class KnowledgeToolSet(ToolSet):
                     logger.error(f"Failed to add source {source_data}: {e}")
                     continue
 
-            # 保存更新后的集合元数据
+            # Save updated collection metadata
             if source_ids:
                 self._metadata["collections"][collection_id] = collection.to_dict()
                 self._save_metadata()
@@ -417,11 +417,11 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def remove_source(self, collection_id: str, source_id: str) -> dict:
         """
-        从集合中移除源
+        Remove a source from a collection.
 
         Args:
-            collection_id: 集合 ID
-            source_id: 源 ID
+            collection_id: Collection ID
+            source_id: Source ID
 
         Returns:
             {"success": bool}
@@ -437,16 +437,16 @@ class KnowledgeToolSet(ToolSet):
                     "error": "Source does not belong to this collection",
                 }
 
-            # 从集合中移除
+            # Remove from collection
             collection = self._get_collection(collection_id)
             if source_id in collection.source_ids:
                 collection.source_ids.remove(source_id)
                 self._metadata["collections"][collection_id] = collection.to_dict()
 
-            # 删除源
+            # Delete source
             del self._metadata["sources"][source_id]
 
-            # 更新集合的文档数量
+            # Update collection document count
             if collection.total_docs >= source.doc_count:
                 collection.total_docs -= source.doc_count
                 collection.updated_at = datetime.now().timestamp()
@@ -454,12 +454,12 @@ class KnowledgeToolSet(ToolSet):
 
             self._save_metadata()
 
-            # 取消后台任务（如果还在运行）
+            # Cancel background task (if still running)
             if source_id in self._source_tasks:
                 self._source_tasks[source_id].cancel()
                 del self._source_tasks[source_id]
 
-            # 使用 VectorStoreBackend 删除源的向量数据
+            # Use VectorStoreBackend to delete source vector data
             await self._vector_store.delete_source_vectors(collection_id, source_id)
 
             logger.info(f"Source removed: {source_id}")
@@ -473,10 +473,10 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def list_sources(self, collection_id: str) -> dict:
         """
-        列出集合中的所有源
+        List all sources in a collection.
 
         Args:
-            collection_id: 集合 ID
+            collection_id: Collection ID
 
         Returns:
             {
@@ -503,13 +503,13 @@ class KnowledgeToolSet(ToolSet):
             return {"success": False, "error": str(e)}
 
     # ============================================================================
-    # Tool 方法 - Chat 配置 (4个)
+    # Tool Methods - Chat Configuration (4)
     # ============================================================================
 
     @tool(exclude=True)
     async def get_chat_knowledge(self) -> dict:
         """
-        获取当前 session 的知识库配置
+        Get the current session's knowledge base configuration.
 
         Returns:
             {
@@ -525,7 +525,7 @@ class KnowledgeToolSet(ToolSet):
         try:
             config = self._get_chat_config(chat_id)
 
-            # 获取激活的集合信息
+            # Get active collection info
             collections = [
                 self._get_collection(cid).to_dict()
                 for cid in config.active_collection_ids
@@ -545,10 +545,10 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def enable_collection(self, collection_id: str) -> dict:
         """
-        为当前 session 启用集合
+        Enable a collection for the current session.
 
         Args:
-            collection_id: 集合 ID
+            collection_id: Collection ID
 
         Returns:
             {
@@ -561,7 +561,7 @@ class KnowledgeToolSet(ToolSet):
             return {"success": False, "error": "No session_id provided"}
 
         try:
-            # 检查集合是否存在
+            # Check if collection exists
             if not self._get_collection(collection_id):
                 return {"success": False, "error": "Collection not found"}
 
@@ -583,10 +583,10 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def disable_collection(self, collection_id: str) -> dict:
         """
-        为当前 session 禁用集合
+        Disable a collection for the current session.
 
         Args:
-            collection_id: 集合 ID
+            collection_id: Collection ID
 
         Returns:
             {
@@ -617,10 +617,10 @@ class KnowledgeToolSet(ToolSet):
     @tool(exclude=True)
     async def set_auto_search(self, enabled: bool) -> dict:
         """
-        设置当前 session 的自动搜索开关
+        Set the auto-search toggle for the current session.
 
         Args:
-            enabled: 是否启用自动搜索
+            enabled: Whether to enable auto-search
 
         Returns:
             {
@@ -647,7 +647,7 @@ class KnowledgeToolSet(ToolSet):
             return {"success": False, "error": str(e)}
 
     # ============================================================================
-    # Tool 方法 - 检索 (1个)
+    # Tool Methods - Retrieval (1)
     # ============================================================================
 
     @tool
@@ -659,13 +659,13 @@ class KnowledgeToolSet(ToolSet):
         use_hybrid: bool = True,
     ) -> dict:
         """
-        搜索知识库
+        Search the knowledge base.
 
         Args:
-            query: 查询文本
-            top_k: 返回结果数量
-            collection_ids: 可选, 集合ID列表（如果不指定则使用当前 session 的激活集合）
-            use_hybrid: 是否使用混合检索
+            query: Query text
+            top_k: Number of results to return
+            collection_ids: Optional, list of collection IDs (uses current session's active collections if not specified)
+            use_hybrid: Whether to use hybrid retrieval
 
         Returns:
             {
@@ -675,7 +675,7 @@ class KnowledgeToolSet(ToolSet):
             }
         """
         try:
-            # 确定要搜索的集合
+            # Determine collections to search
             target_collections = []
             if collection_ids:
                 target_collections = collection_ids
@@ -686,20 +686,20 @@ class KnowledgeToolSet(ToolSet):
                     config = self._get_chat_config(chat_id)
                     target_collections = config.active_collection_ids
                 else:
-                    # 搜索所有集合
+                    # Search all collections
                     target_collections = list(self._metadata["collections"].keys())
 
             if not target_collections:
                 return {"success": True, "results": [], "searched_collections": []}
 
-            # 对每个集合执行检索（已包含 reranking）
+            # Execute retrieval for each collection (includes reranking)
             all_results = []
             for collection_id in target_collections:
                 try:
                     results = await self._search_in_collection(
                         query=query,
                         collection_id=collection_id,
-                        top_k=top_k,  # 直接使用最终 top_k（postprocessor 已处理）
+                        top_k=top_k,  # Use final top_k directly (postprocessor already handled)
                         use_hybrid=use_hybrid,
                     )
                     all_results.extend(results)
@@ -708,7 +708,7 @@ class KnowledgeToolSet(ToolSet):
                         f"Failed to search in collection1 {collection_id}: {e}"
                     )
 
-            # 跨集合排序并截取（单集合内已通过 postprocessor reranked）
+            # Sort across collections and truncate (single collection already reranked via postprocessor)
             all_results.sort(key=lambda x: x.score, reverse=True)
             all_results = all_results[:top_k]
 
@@ -727,50 +727,50 @@ class KnowledgeToolSet(ToolSet):
             return {"success": False, "error": str(e)}
 
     # ============================================================================
-    # 内部方法 - 文档处理和索引
+    # Internal Methods - Document Processing and Indexing
     # ============================================================================
 
     async def _process_source_async(self, source_id: str):
         """
-        后台异步处理源（加载→分块→索引）
-        使用 LlamaIndex 的异步 API
+        Async background processing of source (load -> chunk -> index).
+        Uses LlamaIndex async API.
         """
         try:
             source = self._get_source(source_id)
             logger.info(f"Processing source: {source_id} - {source.name}")
 
-            # 1. 异步加载文档
+            # 1. Load documents asynchronously
             documents = await self._load_documents(source.type, source.path)
             logger.info(f"Loaded {len(documents)} documents from {source.name}")
 
-            # 2. 提取基础元数据并分块
+            # 2. Extract basic metadata and chunk
             all_nodes = []
             file_types = set()
             for doc in documents:
-                # 提取基础元数据（来源、路径等）
+                # Extract basic metadata (source, path, etc.)
                 metadata = self._extract_basic_metadata(doc, source)
                 doc.metadata.update(metadata)
 
-                # 记录文件类型
+                # Record file type
                 if "doc_type" in metadata:
                     file_types.add(metadata["doc_type"])
 
-                # 分块
+                # Chunk
                 nodes = self._vector_store.parse_nodes([doc])
                 all_nodes.extend(nodes)
 
             logger.info(f"Created {len(all_nodes)} chunks for {source.name}")
 
-            # 3. 应用 LlamaIndex MetadataExtractors（批量处理）
+            # 3. Apply LlamaIndex MetadataExtractors (batch processing)
             if self._metadata_extractors:
                 logger.info(
                     f"Applying {len(self._metadata_extractors)} metadata extractors..."
                 )
                 for extractor in self._metadata_extractors:
                     try:
-                        # 批量提取元数据
+                        # Batch extract metadata
                         metadata_list = extractor.extract(all_nodes)
-                        # 更新节点元数据
+                        # Update node metadata
                         for node, metadata in zip(all_nodes, metadata_list):
                             node.metadata.update(metadata)
                     except Exception as e:
@@ -780,16 +780,16 @@ class KnowledgeToolSet(ToolSet):
 
                 logger.info(f"Metadata extraction completed for {len(all_nodes)} nodes")
 
-            # 4. 构建索引
+            # 4. Build index
             await self._build_index(source.collection_id, all_nodes)
 
-            # 5. 更新源状态
+            # 5. Update source status
             source.status = "active"
             source.doc_count = len(documents)
             source.file_types = list(file_types)
             self._metadata["sources"][source_id] = source.to_dict()
 
-            # 6. 更新集合文档数
+            # 6. Update collection document count
             collection = self._get_collection(source.collection_id)
             collection.total_docs += len(documents)
             collection.updated_at = datetime.now().timestamp()
@@ -801,7 +801,7 @@ class KnowledgeToolSet(ToolSet):
 
         except Exception as e:
             logger.error(f"Failed to process source {source_id}: {e}")
-            # 更新为错误状态
+            # Update to error status
             source = self._get_source(source_id)
             source.status = "error"
             source.error = str(e)
@@ -809,30 +809,30 @@ class KnowledgeToolSet(ToolSet):
             self._save_metadata()
 
         finally:
-            # 清理任务引用
+            # Clean up task reference
             if source_id in self._source_tasks:
                 del self._source_tasks[source_id]
 
     async def _load_documents(self, source_type: str, path: str):
         """
-        异步加载文档（使用 SimpleDirectoryReader 的 aload_data）
+        Load documents asynchronously (using SimpleDirectoryReader's aload_data).
         """
         from llama_index.core import SimpleDirectoryReader
 
         if source_type == "file":
-            # 单文件 - SimpleDirectoryReader 会自动使用 pypdf/python-docx
+            # Single file - SimpleDirectoryReader automatically uses pypdf/python-docx
             reader = SimpleDirectoryReader(input_files=[path])
             documents = await reader.aload_data()
         elif source_type == "folder":
-            # 文件夹 - 自动递归扫描并使用内置 readers
-            # 移除 required_exts 限制，让 SimpleDirectoryReader 自动检测所有支持的格式
+            # Folder - automatically scan recursively and use built-in readers
+            # Remove required_exts restriction, let SimpleDirectoryReader auto-detect all supported formats
             reader = SimpleDirectoryReader(
                 input_dir=path,
                 recursive=True,
             )
             documents = await reader.aload_data()
         elif source_type == "url":
-            # URL（暂不实现）
+            # URL (not implemented yet)
             raise NotImplementedError("URL source not implemented yet")
         else:
             raise ValueError(f"Unknown source type: {source_type}")
@@ -841,9 +841,9 @@ class KnowledgeToolSet(ToolSet):
 
     def _extract_basic_metadata(self, document, source: SourceInfo) -> dict:
         """
-        提取基础文档元数据（来源信息 + 文档原始 metadata）
+        Extract basic document metadata (source info + document original metadata).
 
-        注意: 高级元数据（如标题、关键词、摘要）由 LlamaIndex MetadataExtractors 处理
+        Note: Advanced metadata (title, keywords, summary) handled by LlamaIndex MetadataExtractors.
         """
         metadata = {
             "source_id": source.id,
@@ -853,19 +853,19 @@ class KnowledgeToolSet(ToolSet):
             "added_at": source.added_at,
         }
 
-        # 从文档中提取原始元数据
+        # Extract original metadata from document
         if hasattr(document, "metadata") and document.metadata:
-            # 文档标题
+            # Document title
             if "title" in document.metadata:
                 metadata["doc_title"] = document.metadata["title"]
 
-            # 文件类型
+            # File type
             if "file_type" in document.metadata:
                 metadata["doc_type"] = document.metadata["file_type"]
             elif "file_path" in document.metadata:
                 metadata["doc_type"] = Path(document.metadata["file_path"]).suffix[1:]
 
-            # 其他字段（根据配置提取）
+            # Other fields (extract based on config)
             extract_fields = self.knowledge_config["metadata"].get("extract_fields", [])
             for field in extract_fields:
                 if field in document.metadata and field not in metadata:
@@ -874,7 +874,7 @@ class KnowledgeToolSet(ToolSet):
         return metadata
 
     async def _build_index(self, collection_id: str, nodes: List):
-        """构建 Qdrant 原生混合索引（Dense + Sparse Vectors）- 在线程池中运行"""
+        """Build Qdrant native hybrid index (Dense + Sparse Vectors) - runs in thread pool."""
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None, self._vector_store.build_index_sync, collection_id, nodes
@@ -889,11 +889,11 @@ class KnowledgeToolSet(ToolSet):
         top_k: int,
         use_hybrid: bool,
     ) -> List[SearchResult]:
-        """在单个集合中检索（使用 Qdrant 原生混合检索）"""
+        """Search in a single collection (using Qdrant native hybrid retrieval)."""
         results = []
 
         try:
-            # 使用 VectorStoreBackend 进行检索
+            # Use VectorStoreBackend for retrieval
             nodes = await self._vector_store.search(
                 collection_id=collection_id,
                 query=query,
@@ -901,7 +901,7 @@ class KnowledgeToolSet(ToolSet):
                 use_hybrid=use_hybrid,
             )
 
-            # 转换为 SearchResult
+            # Convert to SearchResult
             for node in nodes:
                 results.append(
                     SearchResult(

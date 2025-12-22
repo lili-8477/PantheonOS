@@ -1,7 +1,7 @@
 """
 Knowledge Base ToolSet
 
-知识库管理工具集，提供文档索引、检索和管理功能。
+Knowledge base management toolset providing document indexing, retrieval, and management.
 """
 
 from .config import get_storage_path, load_config

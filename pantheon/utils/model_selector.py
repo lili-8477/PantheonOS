@@ -62,7 +62,7 @@ DEFAULT_PROVIDER_MODELS = {
         "normal": ["gemini/gemini-3-flash-preview"],
         "low": ["gemini/gemini-flash-lite-latest"],
     },
-    # Z.ai (智谱): GLM-4.6/4.5 series
+    # Z.ai (Zhipu): GLM-4.6/4.5 series
     # https://open.bigmodel.cn/
     "zai": {
         "high": ["zai/glm-4.6", "zai/glm-4.5", "zai/glm-4.5v"],

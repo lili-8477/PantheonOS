@@ -657,7 +657,7 @@ class PantheonInputApp:
         # Input Widget (TextArea)
         self.text_area = TextArea(
             multiline=True,
-            wrap_lines=True,  # 启用自动换行
+            wrap_lines=True,  # Enable auto line wrap
             completer=completer,
             history=FileHistory(history_file),
             auto_suggest=AutoSuggestFromHistory(),

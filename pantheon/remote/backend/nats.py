@@ -70,7 +70,7 @@ class NATSStreamChannel(StreamChannel):
         await nc.publish(self._subject, payload)
 
     async def subscribe(self, callback: Callable[[StreamMessage], None]) -> str:
-        """订阅NATS流消息"""
+        """Subscribe to NATS stream messages."""
         if self._closed:
             raise RuntimeError("StreamChannel is closed")
 
@@ -78,22 +78,22 @@ class NATSStreamChannel(StreamChannel):
 
         async def message_handler(msg):
             try:
-                # 解析JSON消息
+                # Parse JSON message
                 payload = json.loads(msg.data.decode("utf-8"))
-                # 转换为StreamMessage对象
+                # Convert to StreamMessage object
                 from .base import StreamMessage
 
                 stream_message = StreamMessage.from_dict(payload)
-                # 调用回调函数 - 使用run_func自动处理同步/异步
+                # Call callback function - use run_func to handle sync/async automatically
                 await run_func(callback, stream_message)
             except Exception as e:
                 logger.error(f"Error processing NATS stream message: {e}")
 
-        # 订阅NATS subject
+        # Subscribe to NATS subject
         subscription = await nc.subscribe(self._subject, cb=message_handler)
         subscription_id = str(id(subscription))
 
-        # 存储subscription以便后续取消订阅
+        # Store subscription for later unsubscribe
         if not hasattr(self, "_subscriptions"):
             self._subscriptions = {}
         self._subscriptions[subscription_id] = subscription
@@ -102,7 +102,7 @@ class NATSStreamChannel(StreamChannel):
         return subscription_id
 
     async def unsubscribe(self, subscription_id: str) -> bool:
-        """取消订阅NATS流消息"""
+        """Unsubscribe from NATS stream messages."""
         if (
             not hasattr(self, "_subscriptions")
             or subscription_id not in self._subscriptions

@@ -7,21 +7,21 @@ from enum import Enum
 
 
 class StreamType(Enum):
-    """流式传输类型"""
+    """Stream transmission type."""
     CHAT = "chat"
     NOTEBOOK = "notebook"
     CUSTOM = "custom"
 
 
 class StreamReliability(Enum):
-    """流可靠性级别"""
-    FAST = "fast"        # Core NATS - 极速传输，可容忍丢失
-    RELIABLE = "reliable"  # JetStream - 可靠传输，消息持久化
+    """Stream reliability level."""
+    FAST = "fast"        # Core NATS - Ultra-fast transmission, tolerates loss
+    RELIABLE = "reliable"  # JetStream - Reliable transmission, message persistence
 
 
 @dataclass
 class StreamMessage:
-    """标准化流式消息格式"""
+    """Standardized stream message format."""
     type: StreamType
     session_id: str
     timestamp: float
@@ -39,7 +39,7 @@ class StreamMessage:
 
     @classmethod
     def from_dict(cls, data: dict) -> "StreamMessage":
-        """从字典创建StreamMessage实例"""
+        """Create StreamMessage instance from dictionary."""
         return cls(
             type=StreamType(data["type"]),
             session_id=data["session_id"],
@@ -60,7 +60,7 @@ class ServiceInfo:
 class RemoteBackend(ABC):
     """Abstract interface for remote communication backends with RPC and streaming capabilities"""
 
-    # RPC调用接口
+    # RPC call interface
     @abstractmethod
     async def connect(self, service_id: str, **kwargs) -> "RemoteService":
         """Connect to a remote service"""
@@ -76,7 +76,7 @@ class RemoteBackend(ABC):
     def servers(self) -> list[str]:
         pass
 
-    # 流式传输接口
+    # Stream transmission interface
     @abstractmethod
     async def get_or_create_stream(
         self,
@@ -84,7 +84,7 @@ class RemoteBackend(ABC):
         stream_type: StreamType = StreamType.CUSTOM,
         **kwargs
     ) -> "StreamChannel":
-        """获取现有流或创建新的流式传输通道"""
+        """Get existing stream or create new stream transmission channel."""
         pass
 
 
@@ -161,38 +161,38 @@ class RemoteWorker(ABC):
 
 
 class StreamChannel(ABC):
-    """抽象流式传输通道"""
+    """Abstract stream transmission channel."""
 
     @abstractmethod
     async def publish(self, message: StreamMessage) -> None:
-        """发布消息到流"""
+        """Publish message to stream."""
         pass
 
     @abstractmethod
     async def subscribe(self, callback: Callable[[StreamMessage], None]) -> str:
-        """订阅流消息，返回订阅ID"""
+        """Subscribe to stream messages, return subscription ID."""
         pass
 
     @abstractmethod
     async def unsubscribe(self, subscription_id: str) -> bool:
-        """取消订阅"""
+        """Unsubscribe."""
         pass
 
     @abstractmethod
     async def close(self) -> None:
-        """关闭流通道"""
+        """Close stream channel."""
         pass
 
     @property
     @abstractmethod
     def stream_id(self) -> str:
-        """获取流ID"""
+        """Get stream ID."""
         pass
 
     @property
     @abstractmethod
     def stream_type(self) -> StreamType:
-        """获取流类型"""
+        """Get stream type."""
         pass
 
 

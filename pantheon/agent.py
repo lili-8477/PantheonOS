@@ -1086,7 +1086,7 @@ class Agent:
         total_time = tracker.end("total")
 
         message["id"] = message_id
-        message["timestamp"] = end_timestamp  # 保持兼容性
+        message["timestamp"] = end_timestamp  # Keep backward compatibility
         
         message.setdefault("_metadata", {}).update({
             "start_timestamp": request_start_time,

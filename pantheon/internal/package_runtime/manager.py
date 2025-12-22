@@ -692,7 +692,12 @@ class PackageManager:
 
         exports = getattr(builtin_toolsets, "__all__", [])
         for export in exports:
-            cls = getattr(builtin_toolsets, export, None)
+            try:
+                cls = getattr(builtin_toolsets, export, None)
+            except Exception as e:
+                # Skip toolsets that fail to import (e.g., missing optional dependencies)
+                logger.debug(f"Skipping system toolset '{export}': {e}")
+                continue
             if not inspect.isclass(cls) or not issubclass(cls, ToolSet):
                 continue
             self._register_system_toolset(export, cls)

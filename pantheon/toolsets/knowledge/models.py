@@ -1,5 +1,5 @@
 """
-Knowledge Base 数据模型定义
+Knowledge Base Data Model Definitions
 """
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List
@@ -8,7 +8,7 @@ from datetime import datetime
 
 @dataclass
 class SourceInfo:
-    """源信息 (文件/文件夹/URL)"""
+    """Source info (file/folder/URL)."""
     id: str
     collection_id: str
     name: str
@@ -22,18 +22,18 @@ class SourceInfo:
     progress: Optional[dict] = None  # {current: int, total: int}
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SourceInfo":
-        """从字典创建"""
+        """Create from dictionary."""
         return cls(**data)
 
 
 @dataclass
 class CollectionInfo:
-    """集合信息"""
+    """Collection info."""
     id: str
     name: str
     description: str
@@ -45,35 +45,35 @@ class CollectionInfo:
     updated_at: float
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> "CollectionInfo":
-        """从字典创建"""
+        """Create from dictionary."""
         return cls(**data)
 
 
 @dataclass
 class ChatKnowledgeConfig:
-    """Chat 知识库配置"""
+    """Chat knowledge base configuration."""
     chat_id: str
     active_collection_ids: List[str] = field(default_factory=list)
     auto_search: bool = False
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> "ChatKnowledgeConfig":
-        """从字典创建"""
+        """Create from dictionary."""
         return cls(**data)
 
 
 @dataclass
 class SearchResult:
-    """搜索结果"""
+    """Search result."""
     id: str
     text: str
     metadata: dict
@@ -81,10 +81,10 @@ class SearchResult:
     collection_id: str
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SearchResult":
-        """从字典创建"""
+        """Create from dictionary."""
         return cls(**data)

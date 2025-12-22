@@ -456,13 +456,13 @@ class ReplUI:
                     )
                     line = input()
 
-                # 空行结束
+                # Empty line ends input
                 if line.strip() == "":
                     break
 
                 lines.append(line)
 
-            # 返回多行合并的字符串
+            # Return merged multi-line string
             return "\n".join(lines).strip()
 
         except KeyboardInterrupt:

@@ -158,7 +158,7 @@ class JediCodeIntelligence:
                 comp_data = {
                     "name": completion.name,
                     "type": completion.type,
-                    # 只为函数类型提供签名
+                    # Only provide signature for function types
                     **({"signature": signature} if signature and completion.type in ['function', 'method'] else {}),
                 }
                 completions.append(comp_data)
