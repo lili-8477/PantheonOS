@@ -259,29 +259,40 @@ class Settings:
         Get learning (Agentic Context Engineering) configuration.
 
         Returns:
-            Dict with learning config: enable, skillbook_path, learning_model, etc.
+            Dict with learning config: enable_learning, enable_injection, skillbook_path, etc.
         """
         self._ensure_loaded()
         learning = self._settings.get("learning", {})
         
+        # Backward compatibility: fallback to old 'enable' key if 'enable_learning' not set
+        enable_learning = learning.get("enable_learning", learning.get("enable", False))
+        # enable_injection defaults to enable_learning if not explicitly set
+        enable_injection = learning.get("enable_injection", enable_learning)
+        
         return {
-            "enable": learning.get("enable", False),  # Disabled by default (requires structured output support)
+            "enable_learning": enable_learning,
+            "enable_injection": enable_injection,
+            # Keep 'enable' for backward compatibility (maps to enable_learning)
+            "enable": enable_learning,
             "skillbook_path": str(
                 self.learning_dir / learning.get("skillbook_path", "skillbook.json")
             ),
             "learning_model": learning.get("learning_model"),  # None uses Agent's default
             "learning_dir": str(
-                self.learning_dir / learning.get("learning_dir", "learning")
+                self.learning_dir / learning.get("learning_dir", "pipeline")
             ),
             "max_skills_per_section": learning.get("max_skills_per_section", 30),
             "max_content_length": learning.get("max_content_length", 500),  # For Skillbook (skill content limit)
-            "max_tool_arg_length": learning.get("max_tool_arg_length", 200),  # For learning trajectory
-            "max_tool_output_length": learning.get("max_tool_output_length", 200),  # For learning trajectory
+            "max_tool_arg_length": learning.get("max_tool_arg_length", 100),  # For learning trajectory
+            "max_tool_output_length": learning.get("max_tool_output_length", 150),  # For learning trajectory
             "cleanup_after_learning": learning.get("cleanup_after_learning", False),
             "enable_agent_scope": learning.get("enable_agent_scope", False),
             # Thresholds for quality control
             "min_confidence_threshold": learning.get("min_confidence_threshold", 0.3),  # Skip reflection if below
             "min_atomicity_score": learning.get("min_atomicity_score", 0.7),  # Reject ADD if below
+            # Mode switch: "pipeline" (default) or "team"
+            "mode": learning.get("mode", "pipeline"),
+            "team_id": learning.get("team_id", "skill_learning_team"),
         }
 
     def get_compression_config(self) -> Dict[str, Any]:

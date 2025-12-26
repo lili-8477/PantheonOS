@@ -15,7 +15,7 @@ from pantheon.utils.misc import run_func
 from .base import Team
 
 if TYPE_CHECKING:
-    from pantheon.internal.learning import LearningPipeline, Skillbook
+    from pantheon.internal.learning import LearningPipeline
 
 
 def _slugify(name: str) -> str:
@@ -121,8 +121,7 @@ class PantheonTeam(Team):
         agents: list[Agent | RemoteAgent],
         use_summary: bool = False,
         max_delegate_depth: int | None = 5,
-        allow_transfer: bool = True,
-        skillbook: Optional["Skillbook"] = None,
+        allow_transfer: bool = False,
         learning_pipeline: Optional["LearningPipeline"] = None,
     ):
         """Initialize PantheonTeam with unified agent architecture.
@@ -133,12 +132,13 @@ class PantheonTeam(Team):
                          when delegating tasks.
             max_delegate_depth: Maximum depth for nested call_agent calls.
             allow_transfer: If True, add transfer_to_agent tool to agents.
-            skillbook: Optional Skillbook for long-term memory.
-            learning_pipeline: Optional learning pipeline.
+            learning_pipeline: Optional learning pipeline (handles trajectory learning).
 
         Note:
             All agents are equal - the first one is used as the default
             entry point but receives no special treatment.
+            
+            Skill injection is handled externally via inject_skills_to_team().
         """
         if not agents:
             raise ValueError("Team must have at least one agent")
@@ -148,10 +148,8 @@ class PantheonTeam(Team):
         self.max_delegate_depth = max_delegate_depth
         self.allow_transfer = allow_transfer
         
-        # Long-term memory
-        self._skillbook = skillbook
+        # Learning pipeline handles trajectory learning
         self._learning_pipeline = learning_pipeline
-        self._skills_injected = False  # Track if skills are already injected
         
         # Context compression
         self._compressor = self._init_compressor()
@@ -160,7 +158,6 @@ class PantheonTeam(Team):
 
         # Keep triage reference for backward compatibility (first agent)
         self.triage = self.team_agents[0]
-        # Note: Skillbook injection moved to first run() call for cache-friendly behavior
     
     def _init_compressor(self):
         """Initialize context compressor from settings."""
@@ -187,29 +184,14 @@ class PantheonTeam(Team):
         
         return ContextCompressor(config, model)
 
-    def _inject_skillbook_to_agents(self) -> None:
-        """Inject relevant skillbook content into all agent instructions."""
-        for agent in self.team_agents:
-            self._inject_skillbook_to_agent(agent)
-
-    def _inject_skillbook_to_agent(self, agent) -> None:
-        """Inject skillbook content into a single agent's instructions."""
-        if not self._skillbook:
-            return
-        
-        # Check for any skillbook header to avoid duplicate injection
-        if "📌 User Rules" in agent.instructions or "📚 Learned" in agent.instructions:
-            return
-        
-        skills_prompt = self._skillbook.as_prompt(agent.name)
-        if skills_prompt:
-            agent.instructions += f"\n\n{skills_prompt}"
-            logger.debug(f"Injected skillbook into agent: {agent.name}")
+    # Note: Skillbook injection is now handled by LearningPipeline.inject_to_team()
+    # The _inject_skillbook_to_agents and _inject_skillbook_to_agent methods have been removed.
 
     def _submit_learning(
         self,
         agent_name: str,
         messages: List[dict],
+        chat_id: str = "",
         parent_question: Optional[str] = None,
     ) -> None:
         """Submit learning data to learning pipeline.
@@ -217,6 +199,7 @@ class PantheonTeam(Team):
         Args:
             agent_name: Name of the agent that produced the trajectory
             messages: List of messages from the conversation
+            chat_id: Original chat/memory ID for grouping learning files
             parent_question: For sub_agent, the delegation instruction
         """
         from pantheon.internal.learning.pipeline import build_learning_input
@@ -231,8 +214,7 @@ class PantheonTeam(Team):
             agent_name=agent_name,
             messages=messages,
             learning_dir=learning_config["learning_dir"],
-            max_tool_arg_length=learning_config["max_tool_arg_length"],
-            max_tool_output_length=learning_config["max_tool_output_length"],
+            chat_id=chat_id,
         )
         
         # For sub_agent, use delegation instruction as question
@@ -240,7 +222,7 @@ class PantheonTeam(Team):
             learning_input.question = parent_question
         
         self._learning_pipeline.submit(learning_input)
-        logger.debug(f"Submitted learning for {agent_name}, turn_id={turn_id}")
+        logger.debug(f"Submitted learning for {agent_name}, turn_id={turn_id}, chat_id={chat_id[:8] if chat_id else 'N/A'}")
 
     async def _perform_compression(self, memory: Memory) -> None:
         """Perform context compression on the memory.
@@ -430,9 +412,12 @@ class PantheonTeam(Team):
 
                 # Submit sub_agent learning (child_memory is the complete conversation)
                 if self._learning_pipeline:
+                    # Use parent memory's id for consistent chat grouping
+                    parent_chat_id = getattr(run_context.memory, "id", "") if run_context.memory else ""
                     self._submit_learning(
                         agent_name=target_agent.name,
                         messages=child_memory._messages,
+                        chat_id=parent_chat_id,
                         parent_question=instruction,
                     )
 
@@ -512,11 +497,8 @@ class PantheonTeam(Team):
         if memory is None:
             memory = Memory(name="pantheon-team")
         
-        # Inject skillbook on first run (cache-friendly: avoids re-injection)
-        if self._skillbook and not self._skills_injected:
-            self._inject_skillbook_to_agents()
-            self._skills_injected = True
-            logger.debug("Skillbook injected into agents on first run")
+        # Note: Skill injection is now handled externally before run()
+        # via inject_skills_to_team(team, skillbook)
         
         # Record turn start for learning
         turn_start_index = len(memory._messages)
@@ -555,6 +537,7 @@ class PantheonTeam(Team):
                         self._submit_learning(
                             agent_name=active_agent.name,
                             messages=current_messages,
+                            chat_id=memory.id or "",
                         )
                 return resp
 

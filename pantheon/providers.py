@@ -486,21 +486,24 @@ class ToolSetProvider(ToolProvider):
         return self.toolset_proxy.toolset_name
 
     async def initialize(self):
-        """Initialize the provider"""
-        try:
-            # Cache tool descriptions for parameter filtering
-            tools_response = await self.toolset_proxy.list_tools()
+        """Initialize the provider (no-op, lazy loading enabled)."""
+        # Tool descriptions are lazily loaded on first list_tools/call_tool call
+        # This avoids calling list_tools during Agent creation
+        pass
 
-            # ToolsetProxy always returns dict format
+    async def _ensure_tool_descriptions(self):
+        """Lazily load tool descriptions for parameter filtering."""
+        if self._tool_descriptions:
+            return  # Already loaded
+        
+        try:
+            tools_response = await self.toolset_proxy.list_tools()
             tools_list = tools_response.get("tools", [])
             for tool in tools_list:
                 if isinstance(tool, dict):
                     self._tool_descriptions[tool.get("name", "")] = tool
-
         except Exception as e:
-            logger.error(f"Failed to initialize ToolSetProvider: {e}")
-            # Don't fail initialization, continue anyway
-            logger.warning("Continuing without cached tool descriptions")
+            logger.warning(f"Failed to load tool descriptions: {e}")
 
     async def list_tools(self) -> list[ToolInfo]:
         """List all available tools from the ToolSet"""
@@ -562,6 +565,9 @@ class ToolSetProvider(ToolProvider):
         """Call a tool on the ToolSet"""
         try:
             logger.debug(f"Calling ToolSet tool '{name}'")
+
+            # Lazy load tool descriptions if not already loaded
+            await self._ensure_tool_descriptions()
 
             # Parameter filtering (extract remote parameters)
             # Only pass parameters that the remote tool expects
