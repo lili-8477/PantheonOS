@@ -185,6 +185,9 @@ class ReplCompleter(Completer):
         ("/agents", "Show agents in team"),
         ("/agent", "Switch to specific agent"),
         ("/team", "Switch team: /team list | /team <id>"),
+        ("/model", "Show/set model: /model [name|tag]"),
+        # MCP server management
+        ("/mcp", "MCP servers: /mcp [start|stop|add|remove]"),
         # Display modes
         ("/verbose", "Verbose output mode"),
         ("/v", "Verbose (short)"),
@@ -526,14 +529,19 @@ def create_key_bindings(app_instance: "PantheonInputApp") -> KeyBindings:
         """Enter to submit or accept completion."""
         buffer = event.current_buffer
 
-        # If completion menu is open, accept the selected completion
+        # If completion menu is open
         if buffer.complete_state:
             completion = buffer.complete_state.current_completion
             if completion:
+                # Accept the selected completion
                 buffer.apply_completion(completion)
-            return
+                return
+            else:
+                # No completion selected - close menu and submit input
+                buffer.cancel_completion()
+                # Fall through to submit
 
-        # Otherwise submit the input
+        # Submit the input
         text = buffer.text
         if text.strip():
             app_instance.accept_input(buffer)
