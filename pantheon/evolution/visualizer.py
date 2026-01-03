@@ -154,8 +154,13 @@ class EvolutionVisualizer:
         Get score history sorted by creation time.
 
         Returns:
-            List of {iteration, score, best_score, program_id}
+            List of {iteration, program_id, <metric_name>: value, best_<metric_name>: value, ...}
         """
+        # Collect all metric keys from all programs
+        all_metric_keys = set()
+        for prog in self.programs.values():
+            all_metric_keys.update(prog.metrics.keys())
+
         # Sort programs by creation time
         sorted_programs = sorted(
             self.programs.values(),
@@ -163,19 +168,39 @@ class EvolutionVisualizer:
         )
 
         history = []
-        best_score = 0.0
+        best_scores: Dict[str, float] = {}  # Track best value for each metric
 
         for i, prog in enumerate(sorted_programs):
-            score = prog.metrics.get("combined_score", 0.0)
-            best_score = max(best_score, score)
-            history.append({
+            entry = {
                 "iteration": i,
-                "score": score,
-                "best_score": best_score,
                 "program_id": prog.id,
-            })
+            }
+
+            # Add all metrics and their best values
+            for key in all_metric_keys:
+                value = prog.metrics.get(key, 0.0)
+                entry[key] = value
+
+                # Update best score for this metric
+                if key not in best_scores or value > best_scores[key]:
+                    best_scores[key] = value
+                entry[f"best_{key}"] = best_scores.get(key, 0.0)
+
+            history.append(entry)
 
         return history
+
+    def get_metric_keys(self) -> List[str]:
+        """
+        Get all unique metric keys from programs.
+
+        Returns:
+            Sorted list of metric key names
+        """
+        all_metric_keys = set()
+        for prog in self.programs.values():
+            all_metric_keys.update(prog.metrics.keys())
+        return sorted(all_metric_keys)
 
     def get_programs_data(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -290,6 +315,7 @@ class EvolutionVisualizer:
         programs_data = self.get_programs_data()
         map_elites_data = self.get_map_elites_data()
         summary_stats = self.get_summary_stats()
+        metric_keys = self.get_metric_keys()
 
         # Generate HTML
         html_content = self._render_html(
@@ -298,6 +324,7 @@ class EvolutionVisualizer:
             programs_data=programs_data,
             map_elites_data=map_elites_data,
             summary_stats=summary_stats,
+            metric_keys=metric_keys,
         )
 
         # Write to file
@@ -314,6 +341,7 @@ class EvolutionVisualizer:
         programs_data: Dict[str, Dict[str, Any]],
         map_elites_data: List[Dict[str, Any]],
         summary_stats: Dict[str, Any],
+        metric_keys: List[str],
     ) -> str:
         """Render the complete HTML report."""
 
@@ -323,6 +351,7 @@ class EvolutionVisualizer:
         programs_json = json.dumps(programs_data, ensure_ascii=False)
         map_elites_json = json.dumps(map_elites_data, ensure_ascii=False)
         stats_json = json.dumps(summary_stats, ensure_ascii=False)
+        metric_keys_json = json.dumps(metric_keys, ensure_ascii=False)
 
         return f'''<!DOCTYPE html>
 <html lang="en">
@@ -428,7 +457,7 @@ class EvolutionVisualizer:
         }}
 
         #chart-container {{
-            height: 300px;
+            min-height: 300px;
         }}
 
         #tree-container {{
@@ -642,6 +671,77 @@ class EvolutionVisualizer:
             color: #8b949e !important;
         }}
 
+        /* diff2html line number overrides */
+        .d2h-code-linenumber {{
+            background: #161b22 !important;
+            color: #8b949e !important;
+            border-color: #30363d !important;
+        }}
+
+        .d2h-code-side-linenumber {{
+            background: #161b22 !important;
+            color: #8b949e !important;
+            border-color: #30363d !important;
+        }}
+
+        .d2h-file-wrapper {{
+            border-color: #30363d !important;
+        }}
+
+        .d2h-file-diff {{
+            border-color: #30363d !important;
+        }}
+
+        .d2h-diff-table {{
+            border-color: #30363d !important;
+        }}
+
+        .d2h-emptyplaceholder {{
+            background: #161b22 !important;
+            border-color: #30363d !important;
+        }}
+
+        .d2h-file-side-diff {{
+            background: #0d1117 !important;
+        }}
+
+        .d2h-diff-tbody tr {{
+            background: #0d1117 !important;
+        }}
+
+        .d2h-info {{
+            background: #161b22 !important;
+            color: #8b949e !important;
+            border-color: #30363d !important;
+        }}
+
+        /* diff2html context and empty placeholder overrides */
+        .d2h-cntx {{
+            background: #0d1117 !important;
+        }}
+
+        .d2h-code-side-emptyplaceholder {{
+            background: #161b22 !important;
+            border-color: #30363d !important;
+        }}
+
+        /* Side-by-side diff empty areas */
+        .d2h-file-side-diff .d2h-emptyplaceholder,
+        .d2h-file-side-diff .d2h-code-side-emptyplaceholder {{
+            background: #161b22 !important;
+        }}
+
+        /* Ensure all table cells have dark background */
+        .d2h-diff-table td {{
+            background: #0d1117 !important;
+            border-color: #30363d !important;
+        }}
+
+        .d2h-diff-table td.d2h-code-side-linenumber,
+        .d2h-diff-table td.d2h-code-linenumber {{
+            background: #161b22 !important;
+        }}
+
         .empty-state {{
             text-align: center;
             padding: 40px;
@@ -792,6 +892,28 @@ class EvolutionVisualizer:
         const programsData = {programs_json};
         const mapElitesData = {map_elites_json};
         const summaryStats = {stats_json};
+        const metricKeys = {metric_keys_json};
+
+        // Color palette for metrics
+        const metricColors = {{
+            'combined_score': '#58a6ff',
+            'mixing_score': '#a371f7',
+            'bio_conservation_score': '#3fb950',
+            'speed_score': '#f0883e',
+            'convergence_score': '#f778ba',
+            'execution_time': '#79c0ff',
+            'iterations': '#ffa657',
+        }};
+
+        // Default color for unknown metrics
+        const defaultColors = ['#58a6ff', '#a371f7', '#3fb950', '#f0883e', '#f778ba', '#79c0ff', '#ffa657', '#ff7b72'];
+
+        function getMetricColor(metric, index) {{
+            return metricColors[metric] || defaultColors[index % defaultColors.length];
+        }}
+
+        // Track which metrics are visible
+        const visibleMetrics = new Set(['combined_score', 'best_combined_score']);
 
         // Color scale for scores
         const colorScale = d3.scaleLinear()
@@ -816,12 +938,12 @@ class EvolutionVisualizer:
             document.getElementById('stat-islands').textContent = summaryStats.num_islands;
         }}
 
-        // Render score history chart
+        // Render score history chart with multi-metric support
         function renderScoreChart() {{
             const container = document.getElementById('chart-container');
             const width = container.clientWidth;
-            const height = 280;
-            const margin = {{top: 20, right: 30, bottom: 40, left: 60}};
+            const height = 320;
+            const margin = {{top: 20, right: 30, bottom: 80, left: 60}};
 
             const svg = d3.select('#chart-container')
                 .append('svg')
@@ -838,66 +960,121 @@ class EvolutionVisualizer:
                 return;
             }}
 
+            // Build list of all metrics (exclude best_* variants for legend, but include in data)
+            const allMetrics = metricKeys.filter(k => !k.startsWith('best_'));
+            const bestMetrics = metricKeys.filter(k => k.startsWith('best_'));
+
+            // Function to compute y-domain based on visible metrics only
+            function computeYDomain() {{
+                let minVal = Infinity, maxVal = -Infinity;
+                scoreHistory.forEach(d => {{
+                    visibleMetrics.forEach(m => {{
+                        if (d[m] !== undefined) {{
+                            minVal = Math.min(minVal, d[m]);
+                            maxVal = Math.max(maxVal, d[m]);
+                        }}
+                    }});
+                }});
+                if (minVal === Infinity) {{ minVal = 0; maxVal = 1; }}
+                const range = maxVal - minVal || 1;
+                const padding = range * 0.1;
+                return [Math.max(0, minVal - padding), maxVal + padding];
+            }}
+
             const x = d3.scaleLinear()
                 .domain([0, scoreHistory.length - 1])
                 .range([margin.left, width - margin.right]);
 
             const y = d3.scaleLinear()
-                .domain([0, d3.max(scoreHistory, d => Math.max(d.score, d.best_score)) * 1.1])
+                .domain(computeYDomain())
                 .range([height - margin.bottom, margin.top]);
 
-            // Grid lines
-            svg.append('g')
+            // Grid lines group (will be updated dynamically)
+            const gridGroup = svg.append('g')
+                .attr('class', 'grid-lines')
                 .attr('stroke', '#30363d')
-                .attr('stroke-opacity', 0.5)
-                .call(g => g
-                    .selectAll('line')
+                .attr('stroke-opacity', 0.5);
+
+            // Y-axis group (will be updated dynamically)
+            const yAxisGroup = svg.append('g')
+                .attr('class', 'y-axis')
+                .attr('transform', `translate(${{margin.left}},0)`)
+                .attr('color', '#8b949e');
+
+            // Create a group for lines
+            const linesGroup = svg.append('g').attr('class', 'lines-group');
+
+            // Draw lines for each metric (and update y-axis dynamically)
+            function drawLines() {{
+                // Recalculate y-domain based on visible metrics
+                y.domain(computeYDomain());
+
+                // Update grid lines
+                gridGroup.selectAll('*').remove();
+                gridGroup.selectAll('line')
                     .data(y.ticks(5))
                     .join('line')
                     .attr('x1', margin.left)
                     .attr('x2', width - margin.right)
                     .attr('y1', d => y(d))
-                    .attr('y2', d => y(d)));
+                    .attr('y2', d => y(d));
 
-            // Score line
-            const scoreLine = d3.line()
-                .x((d, i) => x(i))
-                .y(d => y(d.score));
+                // Update y-axis
+                yAxisGroup.call(d3.axisLeft(y).ticks(5));
 
-            svg.append('path')
-                .datum(scoreHistory)
-                .attr('fill', 'none')
-                .attr('stroke', '#58a6ff')
-                .attr('stroke-width', 1.5)
-                .attr('d', scoreLine);
+                // Clear and redraw lines
+                linesGroup.selectAll('*').remove();
 
-            // Best score line
-            const bestLine = d3.line()
-                .x((d, i) => x(i))
-                .y(d => y(d.best_score));
+                allMetrics.forEach((metric, idx) => {{
+                    const color = getMetricColor(metric, idx);
 
-            svg.append('path')
-                .datum(scoreHistory)
-                .attr('fill', 'none')
-                .attr('stroke', '#3fb950')
-                .attr('stroke-width', 2)
-                .attr('d', bestLine);
+                    // Current value line
+                    if (visibleMetrics.has(metric)) {{
+                        const line = d3.line()
+                            .defined(d => d[metric] !== undefined)
+                            .x((d, i) => x(i))
+                            .y(d => y(d[metric] || 0));
 
-            // Axes
+                        linesGroup.append('path')
+                            .datum(scoreHistory)
+                            .attr('fill', 'none')
+                            .attr('stroke', color)
+                            .attr('stroke-width', 1.5)
+                            .attr('stroke-opacity', 0.8)
+                            .attr('d', line);
+                    }}
+
+                    // Best value line (dashed, thicker)
+                    const bestKey = 'best_' + metric;
+                    if (visibleMetrics.has(bestKey)) {{
+                        const bestLine = d3.line()
+                            .defined(d => d[bestKey] !== undefined)
+                            .x((d, i) => x(i))
+                            .y(d => y(d[bestKey] || 0));
+
+                        linesGroup.append('path')
+                            .datum(scoreHistory)
+                            .attr('fill', 'none')
+                            .attr('stroke', color)
+                            .attr('stroke-width', 2.5)
+                            .attr('stroke-dasharray', '5,3')
+                            .attr('d', bestLine);
+                    }}
+                }});
+            }}
+
+            drawLines();
+
+            // X-axis (static)
             svg.append('g')
                 .attr('transform', `translate(0,${{height - margin.bottom}})`)
                 .call(d3.axisBottom(x).ticks(10))
                 .attr('color', '#8b949e');
 
-            svg.append('g')
-                .attr('transform', `translate(${{margin.left}},0)`)
-                .call(d3.axisLeft(y).ticks(5))
-                .attr('color', '#8b949e');
-
-            // Labels
+            // Axis labels
             svg.append('text')
                 .attr('x', width / 2)
-                .attr('y', height - 5)
+                .attr('y', height - margin.bottom + 35)
                 .attr('text-anchor', 'middle')
                 .attr('fill', '#8b949e')
                 .attr('font-size', '12px')
@@ -905,34 +1082,92 @@ class EvolutionVisualizer:
 
             svg.append('text')
                 .attr('transform', 'rotate(-90)')
-                .attr('x', -height / 2)
+                .attr('x', -height / 2 + margin.bottom / 2)
                 .attr('y', 15)
                 .attr('text-anchor', 'middle')
                 .attr('fill', '#8b949e')
                 .attr('font-size', '12px')
                 .text('Score');
 
-            // Legend
-            const legend = svg.append('g')
-                .attr('transform', `translate(${{width - 150}}, 30)`);
+            // Interactive legend at bottom
+            const legendContainer = d3.select('#chart-container')
+                .append('div')
+                .style('display', 'flex')
+                .style('flex-wrap', 'wrap')
+                .style('justify-content', 'center')
+                .style('gap', '10px')
+                .style('margin-top', '10px');
 
-            legend.append('line')
-                .attr('x1', 0).attr('x2', 20)
-                .attr('y1', 0).attr('y2', 0)
-                .attr('stroke', '#58a6ff').attr('stroke-width', 2);
-            legend.append('text')
-                .attr('x', 25).attr('y', 4)
-                .attr('fill', '#8b949e').attr('font-size', '11px')
-                .text('Score');
+            allMetrics.forEach((metric, idx) => {{
+                const color = getMetricColor(metric, idx);
+                const bestKey = 'best_' + metric;
 
-            legend.append('line')
-                .attr('x1', 0).attr('x2', 20)
-                .attr('y1', 20).attr('y2', 20)
-                .attr('stroke', '#3fb950').attr('stroke-width', 2);
-            legend.append('text')
-                .attr('x', 25).attr('y', 24)
-                .attr('fill', '#8b949e').attr('font-size', '11px')
-                .text('Best Score');
+                // Metric button
+                const btn = legendContainer.append('div')
+                    .style('display', 'flex')
+                    .style('align-items', 'center')
+                    .style('gap', '5px')
+                    .style('padding', '4px 10px')
+                    .style('background', visibleMetrics.has(metric) ? '#21262d' : '#0d1117')
+                    .style('border', '1px solid ' + (visibleMetrics.has(metric) ? color : '#30363d'))
+                    .style('border-radius', '4px')
+                    .style('cursor', 'pointer')
+                    .style('font-size', '11px')
+                    .style('color', visibleMetrics.has(metric) ? '#c9d1d9' : '#8b949e')
+                    .on('click', function() {{
+                        if (visibleMetrics.has(metric)) {{
+                            visibleMetrics.delete(metric);
+                        }} else {{
+                            visibleMetrics.add(metric);
+                        }}
+                        // Update button style
+                        d3.select(this)
+                            .style('background', visibleMetrics.has(metric) ? '#21262d' : '#0d1117')
+                            .style('border-color', visibleMetrics.has(metric) ? color : '#30363d')
+                            .style('color', visibleMetrics.has(metric) ? '#c9d1d9' : '#8b949e');
+                        drawLines();
+                    }});
+
+                btn.append('div')
+                    .style('width', '12px')
+                    .style('height', '3px')
+                    .style('background', color);
+
+                btn.append('span').text(metric.replace(/_/g, ' '));
+
+                // Best metric button
+                const bestBtn = legendContainer.append('div')
+                    .style('display', 'flex')
+                    .style('align-items', 'center')
+                    .style('gap', '5px')
+                    .style('padding', '4px 10px')
+                    .style('background', visibleMetrics.has(bestKey) ? '#21262d' : '#0d1117')
+                    .style('border', '1px solid ' + (visibleMetrics.has(bestKey) ? color : '#30363d'))
+                    .style('border-radius', '4px')
+                    .style('cursor', 'pointer')
+                    .style('font-size', '11px')
+                    .style('color', visibleMetrics.has(bestKey) ? '#c9d1d9' : '#8b949e')
+                    .on('click', function() {{
+                        if (visibleMetrics.has(bestKey)) {{
+                            visibleMetrics.delete(bestKey);
+                        }} else {{
+                            visibleMetrics.add(bestKey);
+                        }}
+                        d3.select(this)
+                            .style('background', visibleMetrics.has(bestKey) ? '#21262d' : '#0d1117')
+                            .style('border-color', visibleMetrics.has(bestKey) ? color : '#30363d')
+                            .style('color', visibleMetrics.has(bestKey) ? '#c9d1d9' : '#8b949e');
+                        drawLines();
+                    }});
+
+                bestBtn.append('div')
+                    .style('width', '12px')
+                    .style('height', '3px')
+                    .style('background', color)
+                    .style('border-top', '2px dashed ' + color);
+
+                bestBtn.append('span').text('best ' + metric.replace(/_/g, ' '));
+            }});
         }}
 
         // Render evolution tree
