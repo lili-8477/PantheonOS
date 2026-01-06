@@ -25,6 +25,7 @@ class EvolutionConfig:
     max_iterations: int = 100
     checkpoint_interval: int = 10
     early_stop_generations: int = 20  # Stop if no improvement for N generations
+    num_workers: int = 1  # Number of parallel workers for evolution
 
     # === Database Parameters ===
     num_islands: int = 3
@@ -36,7 +37,7 @@ class EvolutionConfig:
     feature_bins: int = 10
     feature_range_padding: float = 0.1  # Padding on observed min/max (10%)
     feature_range_adaptive: bool = True  # Use adaptive ranges based on observed data
-    archive_size: int = 100
+    archive_ratio: float = 0.25  # Top 25% of programs in elite archive
     population_size: int = 500
 
     # === Sampling Parameters ===
@@ -128,6 +129,7 @@ class EvolutionConfig:
             "max_iterations": self.max_iterations,
             "checkpoint_interval": self.checkpoint_interval,
             "early_stop_generations": self.early_stop_generations,
+            "num_workers": self.num_workers,
             "num_islands": self.num_islands,
             "migration_interval": self.migration_interval,
             "migration_rate": self.migration_rate,
@@ -135,7 +137,7 @@ class EvolutionConfig:
             "feature_bins": self.feature_bins,
             "feature_range_padding": self.feature_range_padding,
             "feature_range_adaptive": self.feature_range_adaptive,
-            "archive_size": self.archive_size,
+            "archive_ratio": self.archive_ratio,
             "population_size": self.population_size,
             "num_inspirations": self.num_inspirations,
             "num_top_programs": self.num_top_programs,
@@ -172,6 +174,7 @@ class EvolutionConfig:
             "max_iterations",
             "checkpoint_interval",
             "early_stop_generations",
+            "num_workers",
             "num_islands",
             "migration_interval",
             "migration_rate",
@@ -179,7 +182,7 @@ class EvolutionConfig:
             "feature_bins",
             "feature_range_padding",
             "feature_range_adaptive",
-            "archive_size",
+            "archive_ratio",
             "population_size",
             "num_inspirations",
             "num_top_programs",
@@ -279,7 +282,7 @@ def get_thorough_config() -> EvolutionConfig:
         evaluation_timeout=300,
         num_inspirations=3,
         num_top_programs=5,
-        archive_size=200,
+        archive_ratio=0.2,  # Top 20% for large scale
         population_size=1000,
     )
 

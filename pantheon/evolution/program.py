@@ -283,6 +283,7 @@ class Program:
     island_id: int = 0
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     prompt_used: str = ""  # Store the prompt for reproducibility
+    order: Optional[int] = None  # Sequential number assigned when added to database
 
     def fitness_score(self, feature_dimensions: List[str] = None) -> float:
         """
@@ -390,6 +391,7 @@ class Program:
             "island_id": self.island_id,
             "created_at": self.created_at,
             "prompt_used": self.prompt_used,
+            "order": self.order,
         }
 
     @classmethod
@@ -408,6 +410,7 @@ class Program:
             island_id=data.get("island_id", 0),
             created_at=data.get("created_at", datetime.now().isoformat()),
             prompt_used=data.get("prompt_used", ""),
+            order=data.get("order"),
         )
 
     def save(self, path: str) -> None:

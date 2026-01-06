@@ -1,6 +1,7 @@
-max_iterations: 100
+max_iterations: 40
 checkpoint_interval: 10
 early_stop_generations: 200
+num_workers: 4
 num_islands: 3
 migration_interval: 20
 migration_rate: 0.1
@@ -8,6 +9,8 @@ feature_dimensions:
 - mixing_score
 - speed_score
 feature_bins: 10
+feature_range_padding: 0.1
+feature_range_adaptive: true
 archive_size: 100
 population_size: 500
 num_inspirations: 2
@@ -23,6 +26,7 @@ cascade_thresholds:
 - 0.3
 - 0.6
 - 0.8
+feedback_max_lines_per_file: null
 diff_based_evolution: true
 max_code_length: 50000
 max_diff_size: 5000
@@ -31,7 +35,7 @@ max_retries: 3
 mutation_timeout: 120
 mutator_model: normal
 feedback_model: normal
-db_path: results
+db_path: results/
 workspace_path: null
 save_prompts: true
 save_all_programs: false

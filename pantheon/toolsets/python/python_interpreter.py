@@ -163,7 +163,8 @@ class PythonInterpreterToolSet(ToolSet):
             client_id = context_dict.get("client_id")
             if client_id is None:
                 client_id = "default"
-                logger.warning("No client id provided, using default client id.")
+                # Debug level - not a real problem, just informational
+                logger.debug("No client id provided, using default client id.")
             p_id = self.clientid_to_interpreterid.get(client_id)
             if (p_id is None) or (p_id not in self.interpreters):
                 create_resp = await self.new_interpreter()

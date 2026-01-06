@@ -6,6 +6,7 @@ Stores evolved programs with quality-diversity archiving and multi-island evolut
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -47,6 +48,12 @@ class EvolutionDatabase:
     # Observed feature ranges: {feature_name: (min_value, max_value)}
     feature_ranges: Dict[str, Tuple[float, float]] = field(default_factory=dict)
 
+    # Sequence counter for program ordering
+    _next_order: int = 0
+
+    # Thread safety lock for async operations
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+
     def __post_init__(self):
         """Initialize islands if not already set."""
         if not self.islands:
@@ -72,6 +79,10 @@ class EvolutionDatabase:
         Returns:
             True if program was added (might replace existing)
         """
+        # Assign sequential order number
+        program.order = self._next_order
+        self._next_order += 1
+
         self.total_added += 1
 
         # Store program
@@ -157,11 +168,15 @@ class EvolutionDatabase:
             )
 
     def _update_archive(self, program: Program) -> None:
-        """Update elite archive."""
+        """Update elite archive to keep top X% of programs by fitness."""
         self.archive.add(program.id)
 
-        # Trim archive if over size
-        if len(self.archive) > self.config.archive_size:
+        # Calculate dynamic archive size based on ratio
+        total_programs = len(self.programs)
+        target_size = max(1, int(total_programs * self.config.archive_ratio))
+
+        # Trim archive if over target size
+        if len(self.archive) > target_size:
             # Remove lowest fitness programs
             archive_programs = [
                 (pid, self.programs[pid].fitness_score(self.config.feature_dimensions))
@@ -170,7 +185,7 @@ class EvolutionDatabase:
             ]
             archive_programs.sort(key=lambda x: x[1], reverse=True)
 
-            self.archive = set(pid for pid, _ in archive_programs[: self.config.archive_size])
+            self.archive = set(pid for pid, _ in archive_programs[:target_size])
 
     def _update_feature_ranges(self, program: Program) -> None:
         """Update observed min/max for each feature dimension."""
@@ -243,6 +258,44 @@ class EvolutionDatabase:
 
         return parent, inspirations
 
+    async def add_async(
+        self,
+        program: Program,
+        target_island: Optional[int] = None,
+        reference_codes: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        Thread-safe async version of add().
+
+        Args:
+            program: Program to add
+            target_island: Specific island to add to (random if None)
+            reference_codes: Reference codes for diversity calculation
+
+        Returns:
+            True if program was added (might replace existing)
+        """
+        async with self._lock:
+            return self.add(program, target_island, reference_codes)
+
+    async def sample_async(
+        self,
+        num_inspirations: int = 2,
+        island_id: Optional[int] = None,
+    ) -> Tuple[Program, List[Program]]:
+        """
+        Thread-safe async version of sample().
+
+        Args:
+            num_inspirations: Number of inspiration programs to sample
+            island_id: Specific island to sample from (random if None)
+
+        Returns:
+            Tuple of (parent_program, list_of_inspirations)
+        """
+        async with self._lock:
+            return self.sample(num_inspirations, island_id)
+
     def _sample_parent(self, island_id: Optional[int] = None) -> Program:
         """Sample a parent program using configured strategy."""
         rand_val = random.random()
@@ -266,15 +319,28 @@ class EvolutionDatabase:
         return self.programs[program_id]
 
     def _sample_from_archive(self) -> Program:
-        """Sample from elite archive."""
+        """Sample from elite archive with fitness-weighted probability."""
         if not self.archive:
             return self._sample_random()
 
-        program_id = random.choice(list(self.archive))
-        program = self.programs.get(program_id)
-        if program is None:
+        # Calculate fitness weights for archive members
+        weights = []
+        valid_candidates = []
+        for pid in self.archive:
+            program = self.programs.get(pid)
+            if program:
+                fitness = program.fitness_score(self.config.feature_dimensions)
+                # Use fitness as weight (higher fitness = higher probability)
+                # Add small epsilon to avoid zero weights
+                weights.append(max(fitness, 0.001))
+                valid_candidates.append(pid)
+
+        if not valid_candidates:
             return self._sample_random()
-        return program
+
+        # Weighted random selection
+        selected_id = random.choices(valid_candidates, weights=weights, k=1)[0]
+        return self.programs[selected_id]
 
     def _sample_weighted(self, island_id: Optional[int] = None) -> Program:
         """Sample program weighted by fitness."""
@@ -466,6 +532,7 @@ class EvolutionDatabase:
             "total_added": self.total_added,
             "total_improved": self.total_improved,
             "feature_ranges": {k: list(v) for k, v in self.feature_ranges.items()},
+            "next_order": self._next_order,
         }
         with open(save_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
@@ -517,6 +584,8 @@ class EvolutionDatabase:
         # Restore feature ranges
         feature_ranges_data = metadata.get("feature_ranges", {})
         db.feature_ranges = {k: tuple(v) for k, v in feature_ranges_data.items()}
+        # Restore sequence counter
+        db._next_order = metadata.get("next_order", 0)
 
         # Load programs
         programs_dir = load_dir / "programs"

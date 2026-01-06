@@ -284,9 +284,11 @@ def evaluate(workspace_path: str) -> Dict[str, Any]:
     # Load real PBMC data
     # Note: Use absolute path because when run via Evolution, __file__ points to temp location
     import os
+    # Get the directory where this evaluator script is located
+    _script_dir = Path(__file__).parent.resolve() if "__file__" in dir() else Path.cwd()
     data_dir = Path(os.environ.get(
         "HARMONY_DATA_DIR",
-        r"C:\Users\wzxu\Desktop\Pantheon\pantheon-agents\examples\evolution_harmonypy\data"
+        str(_script_dir / "data")
     ))
 
     try:
@@ -412,9 +414,11 @@ def evaluate_on_validation(workspace_path: str) -> Dict[str, Any]:
 
     # Load real PBMC data
     import os
+    # Get the directory where this evaluator script is located
+    _script_dir = Path(__file__).parent.resolve() if "__file__" in dir() else Path.cwd()
     data_dir = Path(os.environ.get(
         "HARMONY_DATA_DIR",
-        r"C:\Users\wzxu\Desktop\Pantheon\pantheon-agents\examples\evolution_harmonypy\data"
+        str(_script_dir / "data")
     ))
 
     try:

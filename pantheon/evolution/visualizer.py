@@ -91,13 +91,6 @@ class EvolutionVisualizer:
                 ...
             }
         """
-        # Compute iteration numbers based on creation order
-        sorted_programs = sorted(
-            self.programs.values(),
-            key=lambda p: p.created_at
-        )
-        iteration_map = {p.id: i for i, p in enumerate(sorted_programs)}
-
         # Find root programs (no parent)
         roots = []
         children_map: Dict[str, List[str]] = {}
@@ -114,10 +107,14 @@ class EvolutionVisualizer:
             prog = self.programs[prog_id]
             score = prog.metrics.get("combined_score", 0.0)
 
+            # Use program.order if available, otherwise fall back to -1
+            order = prog.order if prog.order is not None else -1
+
             node = {
                 "id": prog_id,
                 "name": prog_id[:8],
-                "iteration": iteration_map.get(prog_id, 0),
+                "order": order,
+                "iteration": order,  # Keep 'iteration' for backward compatibility
                 "generation": prog.generation,
                 "island_id": prog.island_id,
                 "score": score,
@@ -160,28 +157,30 @@ class EvolutionVisualizer:
 
     def get_score_history(self) -> List[Dict[str, Any]]:
         """
-        Get score history sorted by creation time.
+        Get score history sorted by program order.
 
         Returns:
-            List of {iteration, program_id, <metric_name>: value, best_<metric_name>: value, ...}
+            List of {iteration, order, program_id, <metric_name>: value, best_<metric_name>: value, ...}
         """
         # Collect all metric keys from all programs
         all_metric_keys = set()
         for prog in self.programs.values():
             all_metric_keys.update(prog.metrics.keys())
 
-        # Sort programs by creation time
+        # Sort programs by order (use order if available, otherwise fall back to created_at)
         sorted_programs = sorted(
             self.programs.values(),
-            key=lambda p: p.created_at
+            key=lambda p: p.order if p.order is not None else float('inf')
         )
 
         history = []
         best_scores: Dict[str, float] = {}  # Track best value for each metric
 
-        for i, prog in enumerate(sorted_programs):
+        for prog in sorted_programs:
+            order = prog.order if prog.order is not None else -1
             entry = {
-                "iteration": i,
+                "order": order,
+                "iteration": order,  # Keep 'iteration' for backward compatibility
                 "program_id": prog.id,
             }
 
@@ -233,18 +232,16 @@ class EvolutionVisualizer:
                 "suggestions": prog.artifacts.get("suggestions", []),
                 "created_at": prog.created_at,
                 "is_best": prog_id == self.database.best_program_id,
-                "code_preview": self._get_code_preview(prog),
+                "code_files": self._get_code_files(prog),
             }
 
         return programs_data
 
-    def _get_code_preview(self, prog: Program, max_lines: int = 50) -> str:
-        """Get a preview of the program code."""
-        code = prog.get_combined_code()
-        lines = code.split("\n")
-        if len(lines) > max_lines:
-            return "\n".join(lines[:max_lines]) + f"\n\n... ({len(lines) - max_lines} more lines)"
-        return code
+    def _get_code_files(self, prog: Program) -> Dict[str, str]:
+        """Get program code as a dict of {filepath: content}."""
+        if prog.snapshot and prog.snapshot.files:
+            return dict(prog.snapshot.files)
+        return {}
 
     def get_map_elites_data(self) -> List[Dict[str, Any]]:
         """
@@ -649,6 +646,111 @@ class EvolutionVisualizer:
             margin: 0;
         }}
 
+        /* Code file sections */
+        .file-section {{
+            margin-bottom: 12px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            overflow: hidden;
+        }}
+
+        .file-section:first-child {{
+            margin-top: 15px;
+        }}
+
+        .file-header {{
+            padding: 8px 12px;
+            background: #161b22;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+        }}
+
+        .file-header:hover {{
+            background: #21262d;
+        }}
+
+        .collapse-icon {{
+            color: #8b949e;
+            transition: transform 0.2s;
+            font-size: 0.8em;
+        }}
+
+        .file-section.collapsed .collapse-icon {{
+            transform: rotate(-90deg);
+        }}
+
+        .file-section.collapsed .file-content {{
+            display: none;
+        }}
+
+        .file-path {{
+            font-family: monospace;
+            color: #58a6ff;
+            font-size: 0.9em;
+        }}
+
+        .file-stats {{
+            margin-left: auto;
+            color: #8b949e;
+            font-size: 0.85em;
+        }}
+
+        .file-actions {{
+            display: flex;
+            gap: 8px;
+        }}
+
+        .file-actions button {{
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 11px;
+        }}
+
+        .file-actions button:hover {{
+            background: #30363d;
+        }}
+
+        .file-content {{
+            display: flex;
+            background: #0d1117;
+            max-height: 500px;
+            overflow: auto;
+        }}
+
+        .file-content .line-numbers {{
+            padding: 12px 10px 12px 12px;
+            text-align: right;
+            color: #6e7681;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.45;
+            user-select: none;
+            border-right: 1px solid #30363d;
+            background: #0d1117;
+            position: sticky;
+            left: 0;
+        }}
+
+        .file-content pre {{
+            margin: 0;
+            padding: 12px;
+            background: #0d1117;
+            overflow-x: auto;
+            flex: 1;
+        }}
+
+        .file-content code {{
+            font-size: 13px;
+            line-height: 1.45;
+        }}
+
         .feedback-section {{
             margin-top: 20px;
             padding: 15px;
@@ -1046,7 +1148,7 @@ class EvolutionVisualizer:
                 </div>
 
                 <div class="tab-content" id="tab-code">
-                    <pre style="background: #0d1117; padding: 15px; border-radius: 6px; overflow-x: auto;" id="code-view"></pre>
+                    <div id="code-files-container"></div>
                 </div>
             </div>
         </section>
@@ -1107,13 +1209,15 @@ class EvolutionVisualizer:
 
         // Color palette for metrics
         const metricColors = {{
-            'combined_score': '#58a6ff',
-            'mixing_score': '#a371f7',
+            'function_score': '#58a6ff',
+            'combined_score': '#79c0ff',
+            'llm_score': '#a371f7',
+            'mixing_score': '#f778ba',
             'bio_conservation_score': '#3fb950',
             'speed_score': '#f0883e',
-            'convergence_score': '#f778ba',
-            'execution_time': '#79c0ff',
-            'iterations': '#ffa657',
+            'convergence_score': '#ffa657',
+            'execution_time': '#8b949e',
+            'iterations': '#6e7681',
         }};
 
         // Default color for unknown metrics
@@ -1231,10 +1335,21 @@ class EvolutionVisualizer:
         }}
 
         // Get filtered score history based on checkbox state
+        // Instead of filtering (which changes array length), we mark hidden entries
         function getFilteredScoreHistory() {{
             const hideFailed = document.getElementById('hide-failed').checked;
-            if (!hideFailed) return scoreHistory;
-            return scoreHistory.filter(d => d.function_score && d.function_score > 0);
+            if (!hideFailed) {{
+                // Reset _hidden flag when showing all
+                return scoreHistory.map(d => ({{ ...d, _hidden: false }}));
+            }}
+            // Mark failed evaluations as hidden instead of filtering them out
+            return scoreHistory.map(d => {{
+                if (d.function_score && d.function_score > 0) {{
+                    return {{ ...d, _hidden: false }};
+                }} else {{
+                    return {{ ...d, _hidden: true }};
+                }}
+            }});
         }}
 
         // Render score history chart with multi-metric support
@@ -1269,10 +1384,11 @@ class EvolutionVisualizer:
             const allMetrics = metricKeys.filter(k => !k.startsWith('best_') && k.endsWith('_score'));
             const bestMetrics = metricKeys.filter(k => k.startsWith('best_') && k.endsWith('_score'));
 
-            // Function to compute y-domain based on visible metrics only
+            // Function to compute y-domain based on visible metrics only (excluding hidden points)
             function computeYDomain() {{
                 let minVal = Infinity, maxVal = -Infinity;
                 chartData.forEach(d => {{
+                    if (d._hidden) return;  // Skip hidden points for y-axis range
                     visibleMetrics.forEach(m => {{
                         if (d[m] !== undefined) {{
                             minVal = Math.min(minVal, d[m]);
@@ -1286,8 +1402,10 @@ class EvolutionVisualizer:
                 return [Math.max(0, minVal - padding), maxVal + padding];
             }}
 
+            // Use order field for x-axis to maintain consistent iteration numbers
+            const maxOrder = Math.max(...chartData.map(d => d.order !== undefined ? d.order : 0));
             const x = d3.scaleLinear()
-                .domain([0, chartData.length - 1])
+                .domain([0, maxOrder])
                 .range([margin.left, width - margin.right]);
 
             const y = d3.scaleLinear()
@@ -1333,15 +1451,15 @@ class EvolutionVisualizer:
                 allMetrics.forEach((metric, idx) => {{
                     const color = getMetricColor(metric, idx);
 
-                    // Current value line
+                    // Current value line - filter out hidden points for continuous line
                     if (visibleMetrics.has(metric)) {{
+                        const visibleData = chartData.filter(d => !d._hidden && d[metric] !== undefined);
                         const line = d3.line()
-                            .defined(d => d[metric] !== undefined)
-                            .x((d, i) => x(i))
+                            .x(d => x(d.order !== undefined ? d.order : 0))
                             .y(d => y(d[metric] || 0));
 
                         linesGroup.append('path')
-                            .datum(chartData)
+                            .datum(visibleData)
                             .attr('fill', 'none')
                             .attr('stroke', color)
                             .attr('stroke-width', 1.5)
@@ -1349,16 +1467,16 @@ class EvolutionVisualizer:
                             .attr('d', line);
                     }}
 
-                    // Best value line (dashed, thicker)
+                    // Best value line (dashed, thicker) - filter out hidden points
                     const bestKey = 'best_' + metric;
                     if (visibleMetrics.has(bestKey)) {{
+                        const bestVisibleData = chartData.filter(d => !d._hidden && d[bestKey] !== undefined);
                         const bestLine = d3.line()
-                            .defined(d => d[bestKey] !== undefined)
-                            .x((d, i) => x(i))
+                            .x(d => x(d.order !== undefined ? d.order : 0))
                             .y(d => y(d[bestKey] || 0));
 
                         linesGroup.append('path')
-                            .datum(chartData)
+                            .datum(bestVisibleData)
                             .attr('fill', 'none')
                             .attr('stroke', color)
                             .attr('stroke-width', 2.5)
@@ -1415,26 +1533,41 @@ class EvolutionVisualizer:
                 .attr('height', height - margin.top - margin.bottom)
                 .style('fill', 'none')
                 .style('pointer-events', 'all')
+                .style('cursor', 'pointer')
                 .on('mouseover', () => focus.style('display', null))
                 .on('mouseout', () => {{
                     focus.style('display', 'none');
                     hideTooltip();
                 }})
                 .on('mousemove', function(event) {{
-                    // Find the nearest data point
+                    // Find the nearest data point by order value
                     const mouseX = d3.pointer(event)[0];
-                    const x0 = x.invert(mouseX);
-                    const i = Math.round(x0);
-                    if (i < 0 || i >= chartData.length) return;
+                    const targetOrder = Math.round(x.invert(mouseX));
 
-                    const dataPoint = chartData[i];
+                    // Find the data point with the closest order value (only non-hidden)
+                    let nearestPoint = null;
+                    let minDist = Infinity;
+                    chartData.forEach(d => {{
+                        if (d._hidden) return;
+                        const order = d.order !== undefined ? d.order : 0;
+                        const dist = Math.abs(order - targetOrder);
+                        if (dist < minDist) {{
+                            minDist = dist;
+                            nearestPoint = d;
+                        }}
+                    }});
 
-                    // Update vertical line position
-                    focus.select('.hover-line').attr('x1', x(i)).attr('x2', x(i));
+                    if (!nearestPoint) return;
+
+                    const dataPoint = nearestPoint;
+                    const pointOrder = dataPoint.order !== undefined ? dataPoint.order : 0;
+
+                    // Update vertical line position using order
+                    focus.select('.hover-line').attr('x1', x(pointOrder)).attr('x2', x(pointOrder));
 
                     // Build tooltip content showing all visible metrics
                     const tooltip = document.getElementById('tooltip');
-                    let html = `<h4>Iteration ${{i}}</h4>`;
+                    let html = `<h4>Iteration ${{pointOrder}}</h4>`;
                     html += `<p style="color: #8b949e; font-size: 0.85em;">Program: ${{dataPoint.program_id ? dataPoint.program_id.substring(0, 8) : '-'}}</p>`;
                     html += '<hr style="border-color: #30363d; margin: 8px 0;">';
 
@@ -1457,6 +1590,27 @@ class EvolutionVisualizer:
                     tooltip.style.display = 'block';
                     tooltip.style.left = (event.pageX + 15) + 'px';
                     tooltip.style.top = (event.pageY - 10) + 'px';
+                }})
+                .on('click', function(event) {{
+                    // Find nearest data point and show program detail
+                    const mouseX = d3.pointer(event)[0];
+                    const targetOrder = Math.round(x.invert(mouseX));
+
+                    let nearestPoint = null;
+                    let minDist = Infinity;
+                    chartData.forEach(d => {{
+                        if (d._hidden) return;
+                        const order = d.order !== undefined ? d.order : 0;
+                        const dist = Math.abs(order - targetOrder);
+                        if (dist < minDist) {{
+                            minDist = dist;
+                            nearestPoint = d;
+                        }}
+                    }});
+
+                    if (nearestPoint && nearestPoint.program_id) {{
+                        showProgramDetail(nearestPoint.program_id);
+                    }}
                 }});
 
             // Interactive legend at bottom
@@ -1672,8 +1826,10 @@ class EvolutionVisualizer:
             }}
             // Check if this is the best program for the selected metric
             const isBest = data.id === findBestProgramId();
+            const orderStr = data.order !== undefined && data.order >= 0 ? '#' + data.order : '';
             tooltip.innerHTML = `
-                <h4>Program: ${{data.name}}</h4>
+                <h4>Program ${{orderStr}}: ${{data.name}}</h4>
+                ${{data.order !== undefined && data.order >= 0 ? '<p><strong>Order:</strong> ' + data.order + '</p>' : ''}}
                 <p><strong>Generation:</strong> ${{data.generation}}</p>
                 <p><strong>Island:</strong> ${{data.island_id}}</p>
                 ${{evalFailed ? '<p style="color: #f85149;"><strong>⚠ Evaluation Failed</strong></p>' : ''}}
@@ -1721,8 +1877,9 @@ class EvolutionVisualizer:
                 panel.classList.add('active');
                 console.log('Panel activated');
 
+                const orderPart = program.order !== undefined && program.order >= 0 ? `#${{program.order}} ` : '';
                 document.getElementById('detail-title').textContent =
-                    `Program: ${{programId.substring(0, 8)}}${{program.is_best ? ' (Best)' : ''}}`;
+                    `Program ${{orderPart}}(${{programId.substring(0, 8)}})${{program.is_best ? ' ★ Best' : ''}}`;
 
                 // Build ancestry path
                 const pathContainer = document.getElementById('ancestry-path');
@@ -1735,7 +1892,9 @@ class EvolutionVisualizer:
                     if (node) {{
                         const ancestors = node.ancestors().reverse();  // Root to current
                         pathContainer.innerHTML = ancestors.map((n, i) => {{
-                            const label = n.data.iteration >= 0 ? `#${{n.data.iteration}}` : n.data.name;
+                            // Use order if available, otherwise fall back to iteration or name
+                            const order = n.data.order !== undefined ? n.data.order : n.data.iteration;
+                            const label = order >= 0 ? `#${{order}}` : n.data.name;
                             const isLast = i === ancestors.length - 1;
                             const nodeHtml = `<span class="path-node${{isLast ? ' current' : ''}}" onclick="showProgramDetail('${{n.data.id}}')">${{label}}</span>`;
                             return isLast ? nodeHtml : nodeHtml + '<span class="path-separator">→</span>';
@@ -1835,8 +1994,49 @@ class EvolutionVisualizer:
 
                 document.getElementById('feedback-view').innerHTML = feedbackHtml;
 
-                // Code preview
-                document.getElementById('code-view').textContent = program.code_preview || 'No code preview available';
+                // Code preview with multi-file support
+                const codeContainer = document.getElementById('code-files-container');
+                codeContainer.innerHTML = '';
+
+                const files = program.code_files || {{}};
+                const sortedPaths = Object.keys(files).sort();
+
+                if (sortedPaths.length === 0) {{
+                    codeContainer.innerHTML = '<p class="empty-state">No code files available</p>';
+                }} else {{
+                    sortedPaths.forEach((path, idx) => {{
+                        const content = files[path];
+                        const lines = content.split('\\n');
+                        const lineNums = lines.map((_, i) => i + 1).join('<br>');
+
+                        const fileSection = document.createElement('div');
+                        fileSection.className = 'file-section';
+                        fileSection.innerHTML = `
+                            <div class="file-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                                <span class="collapse-icon">▼</span>
+                                <span class="file-path">${{path}}</span>
+                                <span class="file-stats">${{lines.length}} lines</span>
+                                <div class="file-actions">
+                                    <button onclick="event.stopPropagation(); copyFileContent(this, '${{path.replace(/'/g, "\\'")}}')">Copy</button>
+                                </div>
+                            </div>
+                            <div class="file-content">
+                                <div class="line-numbers">${{lineNums}}</div>
+                                <pre><code class="language-python">${{escapeHtml(content)}}</code></pre>
+                            </div>
+                        `;
+                        codeContainer.appendChild(fileSection);
+
+                        // Store content for copy functionality
+                        fileSection.dataset.content = content;
+
+                        // Apply syntax highlighting
+                        const codeEl = fileSection.querySelector('code');
+                        if (typeof hljs !== 'undefined') {{
+                            hljs.highlightElement(codeEl);
+                        }}
+                    }});
+                }}
 
                 // Scroll to panel
                 panel.scrollIntoView({{ behavior: 'smooth' }});
@@ -1858,6 +2058,20 @@ class EvolutionVisualizer:
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }}
+
+        // Copy file content to clipboard
+        function copyFileContent(btn, path) {{
+            const fileSection = btn.closest('.file-section');
+            const content = fileSection.dataset.content;
+            navigator.clipboard.writeText(content).then(() => {{
+                btn.textContent = 'Copied!';
+                setTimeout(() => {{ btn.textContent = 'Copy'; }}, 2000);
+            }}).catch(err => {{
+                console.error('Failed to copy:', err);
+                btn.textContent = 'Failed';
+                setTimeout(() => {{ btn.textContent = 'Copy'; }}, 2000);
+            }});
         }}
 
         function closeDetailPanel() {{
@@ -2082,8 +2296,10 @@ class EvolutionVisualizer:
                     }}
                     const isBest = d.program_id === findBestProgramId();
                     const progData = programsData[d.program_id] || {{}};
+                    const orderStr = progData.order !== undefined && progData.order >= 0 ? '#' + progData.order : '#' + d.generation;
                     tooltip.innerHTML = `
-                        <h4>Program #${{d.generation}} <span style="color: #8b949e; font-size: 0.8em;">(${{d.program_id.substring(0, 8)}})</span></h4>
+                        <h4>Program ${{orderStr}} <span style="color: #8b949e; font-size: 0.8em;">(${{d.program_id.substring(0, 8)}})</span></h4>
+                        ${{progData.order !== undefined && progData.order >= 0 ? '<p><strong>Order:</strong> ' + progData.order + '</p>' : ''}}
                         <p><strong>Island:</strong> ${{d.island_id}}</p>
                         <p><strong>Generation:</strong> ${{d.generation}}</p>
                         ${{isBest ? '<p style="color: #ffd700;"><strong>★ Best for ' + selectedMetric.replace(/_/g, ' ') + '</strong></p>' : ''}}

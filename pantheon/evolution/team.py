@@ -60,6 +60,12 @@ class EvolutionTeam:
             config: Evolution configuration (created if None)
         """
         self.config = config or EvolutionConfig()
+
+        # Configure log level from config
+        if self.config.log_level:
+            from pantheon.utils.log import set_level
+            set_level(self.config.log_level)
+
         self.database = database or EvolutionDatabase(config=self.config)
         self.prompt_builder = EvolutionPromptBuilder(
             max_code_length=self.config.max_code_length,
@@ -214,75 +220,171 @@ class EvolutionTeam:
 
             logger.info(f"Initial program score: {initial_score:.4f}")
 
-        # Evolution loop
-        for iteration in range(start_iteration, max_iterations):
-            iter_start = time.time()
+        # Evolution loop - use workers if num_workers > 1
+        if self.config.num_workers > 1:
+            # Parallel worker-based evolution
+            logger.info(f"Starting parallel evolution with {self.config.num_workers} workers")
 
-            try:
-                iter_result = await self._run_iteration(iteration, max_iterations)
-                result.iteration_results.append(iter_result)
+            # Shared atomic counter for iteration numbers
+            iteration_lock = asyncio.Lock()
+            iteration_state = {"next": start_iteration}
 
-                # Track scores
-                result.score_history.append(iter_result.child_score)
+            async def get_next_iteration():
+                """Atomically get and increment iteration counter."""
+                async with iteration_lock:
+                    val = iteration_state["next"]
+                    iteration_state["next"] += 1
+                    return val
 
-                if iter_result.child_score > best_score:
-                    best_score = iter_result.child_score
-                    generations_without_improvement = 0
-                    logger.info(
-                        f"  ★ New best score: {best_score:.4f} "
-                        f"(+{iter_result.improvement:.4f})"
-                    )
-                else:
-                    generations_without_improvement += 1
+            result_queue = asyncio.Queue()
 
-                result.best_score_history.append(best_score)
-
-                # Periodic logging
-                if self.config.log_iterations and iteration % 10 == 0 and iteration > 0:
-                    stats = self.database.get_statistics()
-                    logger.info(
-                        f"--- Progress: {iteration}/{max_iterations}, best={best_score:.4f}, "
-                        f"avg={stats['avg_fitness']:.4f}, programs={stats['total_programs']} ---"
-                    )
-
-                # Periodic migration
-                if iteration > 0 and iteration % self.config.migration_interval == 0:
-                    self.database.migrate()
-
-                # Periodic checkpoint
-                if self.config.db_path and iteration % self.config.checkpoint_interval == 0:
-                    self._save_checkpoint(
-                        self.config.db_path,
-                        iteration,
-                        best_score,
-                        result.score_history,
-                        result.best_score_history,
-                        generations_without_improvement,
-                    )
-
-                # Early stopping
-                if generations_without_improvement >= self.config.early_stop_generations:
-                    logger.info(
-                        f"Early stopping: no improvement for "
-                        f"{generations_without_improvement} generations"
-                    )
-                    break
-
-            except Exception as e:
-                logger.error(f"Iteration {iteration} failed: {e}")
-                result.errors.append(f"Iteration {iteration}: {e}")
-                result.iteration_results.append(
-                    IterationResult(
-                        iteration=iteration,
-                        parent_id="",
-                        child_id="",
-                        parent_score=0,
-                        child_score=0,
-                        improvement=0,
-                        accepted=False,
-                        error=str(e),
-                    )
+            # Start workers
+            workers = [
+                asyncio.create_task(
+                    self._worker(i, get_next_iteration, max_iterations, result_queue)
                 )
+                for i in range(self.config.num_workers)
+            ]
+
+            # Collect results as they come in
+            completed_iterations = 0
+            target_iterations = max_iterations - start_iteration
+
+            while completed_iterations < target_iterations:
+                try:
+                    iter_result = await asyncio.wait_for(result_queue.get(), timeout=300)
+                    result.iteration_results.append(iter_result)
+                    completed_iterations += 1
+
+                    # Track scores
+                    result.score_history.append(iter_result.child_score)
+
+                    is_new_best = False
+                    if iter_result.child_score > best_score:
+                        best_score = iter_result.child_score
+                        generations_without_improvement = 0
+                        is_new_best = True
+                    else:
+                        generations_without_improvement += 1
+
+                    result.best_score_history.append(best_score)
+
+                    # Log every iteration with clear progress
+                    progress_pct = completed_iterations / target_iterations * 100
+                    status = "★ NEW BEST" if is_new_best else ("✓ accepted" if iter_result.accepted else "✗ rejected")
+                    logger.info(
+                        f"[{completed_iterations}/{target_iterations}] ({progress_pct:.0f}%) "
+                        f"iter={iter_result.iteration} score={iter_result.child_score:.4f} "
+                        f"best={best_score:.4f} {status}"
+                    )
+
+                    # Periodic summary (every 10 iterations)
+                    if completed_iterations % 10 == 0:
+                        stats = self.database.get_statistics()
+                        logger.info(
+                            f"=== Summary: {completed_iterations}/{target_iterations} complete, "
+                            f"best={best_score:.4f}, avg={stats['avg_fitness']:.4f}, "
+                            f"programs={stats['total_programs']} ==="
+                        )
+
+                    # Periodic checkpoint
+                    if self.config.db_path and completed_iterations % self.config.checkpoint_interval == 0:
+                        self._save_checkpoint(
+                            self.config.db_path,
+                            start_iteration + completed_iterations,
+                            best_score,
+                            result.score_history,
+                            result.best_score_history,
+                            generations_without_improvement,
+                        )
+
+                    # Early stopping check
+                    if generations_without_improvement >= self.config.early_stop_generations:
+                        logger.info(
+                            f"Early stopping: no improvement for "
+                            f"{generations_without_improvement} iterations"
+                        )
+                        break
+
+                except asyncio.TimeoutError:
+                    logger.warning("Waiting for worker results...")
+                    continue
+
+            # Cancel remaining workers
+            for worker in workers:
+                worker.cancel()
+
+            # Wait for workers to finish
+            await asyncio.gather(*workers, return_exceptions=True)
+
+        else:
+            # Sequential evolution (original behavior)
+            for iteration in range(start_iteration, max_iterations):
+                try:
+                    iter_result = await self._run_iteration(iteration, max_iterations)
+                    result.iteration_results.append(iter_result)
+
+                    # Track scores
+                    result.score_history.append(iter_result.child_score)
+
+                    if iter_result.child_score > best_score:
+                        best_score = iter_result.child_score
+                        generations_without_improvement = 0
+                        logger.info(
+                            f"  ★ New best score: {best_score:.4f} "
+                            f"(+{iter_result.improvement:.4f})"
+                        )
+                    else:
+                        generations_without_improvement += 1
+
+                    result.best_score_history.append(best_score)
+
+                    # Periodic logging
+                    if self.config.log_iterations and iteration % 10 == 0 and iteration > 0:
+                        stats = self.database.get_statistics()
+                        logger.info(
+                            f"--- Progress: {iteration}/{max_iterations}, best={best_score:.4f}, "
+                            f"avg={stats['avg_fitness']:.4f}, programs={stats['total_programs']} ---"
+                        )
+
+                    # Periodic migration
+                    if iteration > 0 and iteration % self.config.migration_interval == 0:
+                        self.database.migrate()
+
+                    # Periodic checkpoint
+                    if self.config.db_path and iteration % self.config.checkpoint_interval == 0:
+                        self._save_checkpoint(
+                            self.config.db_path,
+                            iteration,
+                            best_score,
+                            result.score_history,
+                            result.best_score_history,
+                            generations_without_improvement,
+                        )
+
+                    # Early stopping
+                    if generations_without_improvement >= self.config.early_stop_generations:
+                        logger.info(
+                            f"Early stopping: no improvement for "
+                            f"{generations_without_improvement} generations"
+                        )
+                        break
+
+                except Exception as e:
+                    logger.error(f"Iteration {iteration} failed: {e}")
+                    result.errors.append(f"Iteration {iteration}: {e}")
+                    result.iteration_results.append(
+                        IterationResult(
+                            iteration=iteration,
+                            parent_id="",
+                            child_id="",
+                            parent_score=0,
+                            child_score=0,
+                            improvement=0,
+                            accepted=False,
+                            error=str(e),
+                        )
+                    )
 
         # Finalize result
         result.total_iterations = len(result.iteration_results)
@@ -293,9 +395,11 @@ class EvolutionTeam:
 
         # Save final checkpoint
         if self.config.db_path:
+            # Compute final iteration number
+            final_iteration = start_iteration + len(result.iteration_results) - 1
             self._save_checkpoint(
                 self.config.db_path,
-                iteration,
+                final_iteration,
                 best_score,
                 result.score_history,
                 result.best_score_history,
@@ -457,6 +561,168 @@ class EvolutionTeam:
         result_str = "✓ Improved" if improvement > 0 else "✗ No improvement"
         accepted_str = "(accepted)" if accepted else "(rejected)"
         logger.info(f"  Result: {result_str} ({improvement:+.4f}) {accepted_str} [{total_time:.1f}s]")
+
+        return IterationResult(
+            iteration=iteration,
+            parent_id=parent.id,
+            child_id=child.id,
+            parent_score=parent_score,
+            child_score=child_score,
+            improvement=improvement,
+            accepted=accepted,
+            mutation_time=mutation_time,
+            evaluation_time=eval_time,
+            total_time=total_time,
+        )
+
+    async def _worker(
+        self,
+        worker_id: int,
+        get_next_iteration,
+        max_iterations: int,
+        result_queue: asyncio.Queue,
+    ) -> None:
+        """
+        Single worker that runs evolution iterations independently.
+
+        Args:
+            worker_id: Identifier for this worker
+            get_next_iteration: Async function to get next iteration number
+            max_iterations: Stop when counter reaches this value
+            result_queue: Queue to put iteration results
+        """
+        while True:
+            # Get next iteration number atomically
+            iteration = await get_next_iteration()
+
+            if iteration >= max_iterations:
+                break
+
+            logger.info(f"[Worker {worker_id}] Starting iteration {iteration + 1}/{max_iterations}")
+
+            try:
+                iter_result = await self._run_worker_iteration(worker_id, iteration)
+                await result_queue.put(iter_result)
+            except Exception as e:
+                logger.error(f"[Worker {worker_id}] Iteration {iteration} failed: {e}")
+                await result_queue.put(IterationResult(
+                    iteration=iteration,
+                    parent_id="",
+                    child_id="",
+                    parent_score=0,
+                    child_score=0,
+                    improvement=0,
+                    accepted=False,
+                    error=str(e),
+                ))
+
+    async def _run_worker_iteration(
+        self,
+        worker_id: int,
+        iteration: int,
+    ) -> IterationResult:
+        """
+        Run a single evolution iteration for a worker (thread-safe).
+
+        Args:
+            worker_id: Identifier for this worker
+            iteration: Current iteration number
+
+        Returns:
+            IterationResult with details
+        """
+        iter_start = time.time()
+
+        # Sample parent and inspirations (thread-safe)
+        parent, inspirations = await self.database.sample_async(
+            num_inspirations=self.config.num_inspirations,
+        )
+
+        parent_score = parent.fitness_score(self.config.feature_dimensions)
+
+        # Get top programs (thread-safe)
+        async with self.database._lock:
+            top_programs = self.database.get_top_programs(
+                n=self.config.num_top_programs,
+            )
+
+        # Build mutation prompt
+        prompt = self.prompt_builder.build_mutation_prompt(
+            parent=parent,
+            objective=self.objective,
+            top_programs=top_programs,
+            inspirations=inspirations,
+            artifacts=parent.artifacts,
+            iteration=iteration,
+        )
+
+        # Generate mutation with timeout
+        mutation_start = time.time()
+        mutator = await self._ensure_mutator()
+
+        try:
+            response = await asyncio.wait_for(
+                mutator.run(prompt, update_memory=False),
+                timeout=self.config.mutation_timeout
+            )
+            mutation_time = time.time() - mutation_start
+        except asyncio.TimeoutError:
+            mutation_time = time.time() - mutation_start
+            logger.warning(f"[Worker {worker_id}] Mutation timeout after {mutation_time:.1f}s")
+            return IterationResult(
+                iteration=iteration,
+                parent_id=parent.id,
+                child_id=parent.id,
+                parent_score=parent_score,
+                child_score=parent_score,
+                improvement=0,
+                accepted=False,
+                mutation_time=mutation_time,
+                evaluation_time=0,
+                total_time=time.time() - iter_start,
+                error="mutation_timeout",
+            )
+
+        # Apply mutation
+        try:
+            child_snapshot = self._apply_mutation(parent.snapshot, response.content)
+        except Exception as e:
+            logger.warning(f"[Worker {worker_id}] Failed to apply mutation: {e}")
+            child_snapshot = parent.snapshot
+
+        # Create child program
+        child = Program(
+            id=str(uuid.uuid4())[:8],
+            snapshot=child_snapshot,
+            diff_from_parent=child_snapshot.diff_from(parent.snapshot),
+            parent_id=parent.id,
+            generation=parent.generation + 1,
+            prompt_used=prompt if self.config.save_prompts else "",
+        )
+
+        # Evaluate child
+        eval_start = time.time()
+        evaluator = await self._ensure_evaluator()
+        eval_result = await evaluator.evaluate(child)
+        eval_time = time.time() - eval_start
+
+        child.metrics = eval_result.metrics
+        child.artifacts = eval_result.artifacts
+        child.llm_feedback = eval_result.llm_feedback
+
+        child_score = child.fitness_score(self.config.feature_dimensions)
+        improvement = child_score - parent_score
+
+        # Add to database (thread-safe)
+        accepted = await self.database.add_async(child)
+
+        total_time = time.time() - iter_start
+
+        logger.info(
+            f"[Worker {worker_id}] Iteration {iteration}: "
+            f"score {child_score:.4f} ({improvement:+.4f}) "
+            f"{'accepted' if accepted else 'rejected'} [{total_time:.1f}s]"
+        )
 
         return IterationResult(
             iteration=iteration,

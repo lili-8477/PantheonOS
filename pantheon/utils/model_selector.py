@@ -135,24 +135,53 @@ class ModelSelector:
 
         import os
 
+        # Cloud providers that require API keys (excludes local-only providers)
+        CLOUD_PROVIDERS = [
+            "openai", "anthropic", "gemini", "google", "azure",
+            "cohere", "replicate", "huggingface", "together_ai",
+            "openrouter", "groq", "mistral", "deepseek", "bedrock",
+        ]
+
+        self._available_providers = set()
+
+        # Try litellm's validate_environment (works across versions)
         try:
-            from litellm.utils import _infer_valid_provider_from_env_vars
+            from litellm.utils import validate_environment
 
-            # litellm returns LlmProviders enum - extract .value for lowercase string
-            self._available_providers = set()
-            for p in _infer_valid_provider_from_env_vars():
-                # Handle enum (has .value) or string
-                provider_name = p.value if hasattr(p, "value") else str(p)
+            for provider in CLOUD_PROVIDERS:
+                try:
+                    result = validate_environment(model=f"{provider}/dummy")
+                    if result.get("keys_in_environment", False):
+                        self._available_providers.add(provider)
+                except Exception:
+                    continue
 
-                # Double-check that the API key is actually set (not empty string)
-                # litellm only checks key existence, not if value is non-empty
-                env_key = f"{provider_name.upper()}_API_KEY"
-                api_key_value = os.environ.get(env_key, "")
-                if api_key_value:  # Only add if API key is non-empty
-                    self._available_providers.add(provider_name)
-        except Exception as e:
-            logger.warning(f"Failed to detect providers from environment: {e}")
-            self._available_providers = set()
+            if self._available_providers:
+                return self._available_providers
+        except ImportError:
+            pass  # litellm not available
+
+        # Fallback: manually check common provider API keys
+        PROVIDER_API_KEYS = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "google": "GOOGLE_API_KEY",
+            "azure": "AZURE_API_KEY",
+            "cohere": "COHERE_API_KEY",
+            "replicate": "REPLICATE_API_KEY",
+            "huggingface": "HUGGINGFACE_API_KEY",
+            "together_ai": "TOGETHER_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "mistral": "MISTRAL_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
+        }
+
+        for provider, env_key in PROVIDER_API_KEYS.items():
+            api_key_value = os.environ.get(env_key, "")
+            if api_key_value:
+                self._available_providers.add(provider)
 
         return self._available_providers
 

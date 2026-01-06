@@ -205,3 +205,6 @@ workdir/
 backup/
 *.h5ad
 evolution_results/
+
+# Evolution example results (only programs/ with individual JSON files)
+examples/evolution_harmonypy/results/programs/

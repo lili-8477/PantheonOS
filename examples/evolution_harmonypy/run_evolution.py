@@ -61,12 +61,13 @@ async def run_evolution(
     # Create configuration
     config = EvolutionConfig(
         max_iterations=iterations,
+        num_workers=4,  # Parallel workers for evolution
         num_islands=3,
         num_inspirations=2,
         num_top_programs=3,
         max_parallel_evaluations=2,
         evaluation_timeout=120,
-        feature_dimensions=["mixing_score", "speed_score"],  # Use evaluation metrics as features
+        feature_dimensions=["mixing_score", "speed_score", "bio_conservation_score"],  # Use evaluation metrics as features
         early_stop_generations=200,  # Don't stop early, run full iterations
         # Use system default model (configured via environment)
         log_level="DEBUG" if verbose else "INFO",

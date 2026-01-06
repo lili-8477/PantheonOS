@@ -318,7 +318,8 @@ class ShellToolSet(ToolSet):
             client_id = context_dict.get("client_id")
             if client_id is None:
                 client_id = "default"
-                logger.warning("No client id provided, using default client id.")
+                # Debug level - not a real problem, just informational
+                logger.debug("No client id provided, using default client id.")
 
             initial_output = ""
             # Resolve shell_id from client_id mapping
