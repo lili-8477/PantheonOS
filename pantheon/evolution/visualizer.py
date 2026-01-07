@@ -233,6 +233,7 @@ class EvolutionVisualizer:
                 "created_at": prog.created_at,
                 "is_best": prog_id == self.database.best_program_id,
                 "code_files": self._get_code_files(prog),
+                "analysis_used": prog.analysis_used or "",
             }
 
         return programs_data
@@ -385,6 +386,8 @@ class EvolutionVisualizer:
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <!-- marked.js for markdown rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
 
     <style>
         * {{
@@ -767,6 +770,80 @@ class EvolutionVisualizer:
             white-space: pre-wrap;
         }}
 
+        .analysis-section {{
+            margin-top: 20px;
+            padding: 15px;
+            background: #21262d;
+            border-radius: 6px;
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+
+        .analysis-content {{
+            font-size: 0.95em;
+            line-height: 1.7;
+            color: #c9d1d9;
+        }}
+
+        .analysis-content h1, .analysis-content h2, .analysis-content h3,
+        .analysis-content h4, .analysis-content h5, .analysis-content h6 {{
+            color: #58a6ff;
+            margin-top: 1.2em;
+            margin-bottom: 0.6em;
+            margin-left: 0;
+            padding-left: 0;
+            font-weight: 600;
+        }}
+
+        .analysis-content h1 {{ font-size: 1.5em; border-bottom: 1px solid #30363d; padding-bottom: 0.3em; }}
+        .analysis-content h2 {{ font-size: 1.3em; border-bottom: 1px solid #30363d; padding-bottom: 0.3em; }}
+        .analysis-content h3 {{ font-size: 1.1em; }}
+
+        .analysis-content p {{
+            margin-bottom: 1em;
+        }}
+
+        .analysis-content ul, .analysis-content ol {{
+            padding-left: 2em;
+            margin-bottom: 1em;
+        }}
+
+        .analysis-content li {{
+            margin-bottom: 0.4em;
+        }}
+
+        .analysis-content code {{
+            background: #161b22;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }}
+
+        .analysis-content pre {{
+            background: #161b22;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-bottom: 1em;
+        }}
+
+        .analysis-content pre code {{
+            background: none;
+            padding: 0;
+        }}
+
+        .analysis-content strong {{
+            color: #f0f6fc;
+        }}
+
+        .analysis-content blockquote {{
+            border-left: 3px solid #3fb950;
+            padding-left: 1em;
+            color: #8b949e;
+            margin: 1em 0;
+        }}
+
         #heatmap-container {{
             height: 400px;
         }}
@@ -1135,12 +1212,17 @@ class EvolutionVisualizer:
 
                 <div class="tabs">
                     <div class="tab active" data-tab="diff">Diff</div>
+                    <div class="tab" data-tab="analysis">Analysis</div>
                     <div class="tab" data-tab="feedback">LLM Feedback</div>
                     <div class="tab" data-tab="code">Code Preview</div>
                 </div>
 
                 <div class="tab-content active" id="tab-diff">
                     <div class="diff-container" id="diff-view"></div>
+                </div>
+
+                <div class="tab-content" id="tab-analysis">
+                    <div class="analysis-section" id="analysis-view"></div>
                 </div>
 
                 <div class="tab-content" id="tab-feedback">
@@ -1993,6 +2075,28 @@ class EvolutionVisualizer:
                 }}
 
                 document.getElementById('feedback-view').innerHTML = feedbackHtml;
+
+                // Analysis view - render analyzer's analysis content as markdown
+                let analysisHtml = '';
+                if (program.analysis_used && program.analysis_used.trim()) {{
+                    // Use marked.js to render markdown content
+                    if (typeof marked !== 'undefined') {{
+                        analysisHtml = `<div class="analysis-content markdown-body">${{marked.parse(program.analysis_used)}}</div>`;
+                    }} else {{
+                        // Fallback to plain text if marked is not available
+                        analysisHtml = `<div class="analysis-content" style="white-space: pre-wrap;">${{escapeHtml(program.analysis_used)}}</div>`;
+                    }}
+                }} else {{
+                    analysisHtml = '<p class="empty-state">No analysis available</p>';
+                }}
+                document.getElementById('analysis-view').innerHTML = analysisHtml;
+
+                // Apply syntax highlighting to code blocks in analysis
+                document.querySelectorAll('#analysis-view pre code').forEach(block => {{
+                    if (typeof hljs !== 'undefined') {{
+                        hljs.highlightElement(block);
+                    }}
+                }});
 
                 // Code preview with multi-file support
                 const codeContainer = document.getElementById('code-files-container');

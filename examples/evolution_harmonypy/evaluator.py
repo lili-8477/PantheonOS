@@ -282,14 +282,10 @@ def evaluate(workspace_path: str) -> Dict[str, Any]:
         }
 
     # Load real PBMC data
-    # Note: Use absolute path because when run via Evolution, __file__ points to temp location
+    # HARMONY_DATA_DIR must be set by the caller (run_evolution.py) since
+    # this evaluator runs in a temp workspace where __file__ is not reliable
     import os
-    # Get the directory where this evaluator script is located
-    _script_dir = Path(__file__).parent.resolve() if "__file__" in dir() else Path.cwd()
-    data_dir = Path(os.environ.get(
-        "HARMONY_DATA_DIR",
-        str(_script_dir / "data")
-    ))
+    data_dir = Path(os.environ.get("HARMONY_DATA_DIR", "data"))
 
     try:
         X_train, batch_train, X_val, batch_val = load_pbmc_data(data_dir)
@@ -414,12 +410,7 @@ def evaluate_on_validation(workspace_path: str) -> Dict[str, Any]:
 
     # Load real PBMC data
     import os
-    # Get the directory where this evaluator script is located
-    _script_dir = Path(__file__).parent.resolve() if "__file__" in dir() else Path.cwd()
-    data_dir = Path(os.environ.get(
-        "HARMONY_DATA_DIR",
-        str(_script_dir / "data")
-    ))
+    data_dir = Path(os.environ.get("HARMONY_DATA_DIR", "data"))
 
     try:
         X_train, batch_train, X_val, batch_val = load_pbmc_data(data_dir)

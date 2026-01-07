@@ -526,6 +526,7 @@ class EvolutionTeam:
         effective_inspirations = inspirations if use_inspirations else None
 
         # Build prompt (with or without analyzer)
+        analysis_text = ""  # Store analyzer output for program record
         if self.config.use_analyzer:
             # === Analyzer Phase (full context) ===
             analysis_start = time.time()
@@ -640,6 +641,7 @@ class EvolutionTeam:
             parent_id=parent.id,
             generation=parent.generation + 1,
             prompt_used=prompt if self.config.save_prompts else "",
+            analysis_used=analysis_text if self.config.save_prompts else "",
         )
 
         # Evaluate child

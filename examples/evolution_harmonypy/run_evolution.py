@@ -19,6 +19,7 @@ Example:
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # Load .env file from the example directory
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
+
+# Set HARMONY_DATA_DIR so evaluator can find data when running in temp workspace
+_example_dir = Path(__file__).parent.resolve()
+os.environ.setdefault("HARMONY_DATA_DIR", str(_example_dir / "data"))
 
 
 async def run_evolution(

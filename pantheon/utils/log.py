@@ -5,6 +5,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# Reconfigure stdout/stderr to use UTF-8 encoding (fixes Windows GBK issues with emoji)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 from loguru import logger as loguru_logger
 
 LEVEL_MAP = {
