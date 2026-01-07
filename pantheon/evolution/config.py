@@ -66,6 +66,13 @@ class EvolutionConfig:
     max_retries: int = 3  # Retries for failed mutations
     mutation_timeout: int = 120  # Timeout for LLM mutation call (seconds)
 
+    # === Analyzer Parameters ===
+    use_analyzer: bool = True  # Enable analyzer agent before mutator
+    analyzer_model: str = "normal"
+    analyzer_timeout: int = 60  # Timeout for analyzer (seconds)
+    top_programs_probability: float = 0.5  # Probability of including top programs in prompt
+    inspirations_probability: float = 0.2  # Probability of including inspirations in prompt
+
     # === Model Configuration ===
     mutator_model: str = "normal"
     feedback_model: str = "normal"
@@ -156,6 +163,11 @@ class EvolutionConfig:
             "temperature": self.temperature,
             "max_retries": self.max_retries,
             "mutation_timeout": self.mutation_timeout,
+            "use_analyzer": self.use_analyzer,
+            "analyzer_model": self.analyzer_model,
+            "analyzer_timeout": self.analyzer_timeout,
+            "top_programs_probability": self.top_programs_probability,
+            "inspirations_probability": self.inspirations_probability,
             "mutator_model": self.mutator_model,
             "feedback_model": self.feedback_model,
             "db_path": self.db_path,
@@ -201,6 +213,11 @@ class EvolutionConfig:
             "temperature",
             "max_retries",
             "mutation_timeout",
+            "use_analyzer",
+            "analyzer_model",
+            "analyzer_timeout",
+            "top_programs_probability",
+            "inspirations_probability",
             "mutator_model",
             "feedback_model",
             "db_path",

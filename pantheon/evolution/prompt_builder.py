@@ -77,6 +77,58 @@ You can:
 """
 
 
+# Simplified mutator prompt (used when analyzer provides instructions)
+MUTATION_SYSTEM_PROMPT_SIMPLE = """You are a code editor. Your task is to implement code modifications as instructed.
+
+## Output Format
+For each change, specify the file and use SEARCH/REPLACE blocks:
+
+File: path/to/file.py
+<<<<<<< SEARCH
+original code to find
+=======
+modified code
+>>>>>>> REPLACE
+
+## Guidelines
+1. Follow the modification instructions exactly
+2. Ensure SEARCH blocks match existing code precisely
+3. Preserve indentation and code style
+4. Make only the changes specified
+"""
+
+
+# Analyzer system prompt
+ANALYZER_SYSTEM_PROMPT = """You are an expert code analyzer and optimization strategist.
+
+## Your Role
+Analyze code to identify issues and design specific improvement proposals.
+
+## Thinking Process
+You have access to a `think` tool. Use it to reason through complex problems:
+1. First, use `think` to analyze the current code structure and identify potential issues
+2. Use `think` again to evaluate different optimization strategies
+3. Then provide your final analysis and proposal
+
+IMPORTANT: You MUST use the `think` tool at least once before providing your final answer.
+
+## Your Task
+1. **Identify Issues**: Find performance bottlenecks, inefficiencies, or code problems
+2. **Propose Solutions**: Design specific, actionable modifications
+3. **Prioritize**: Focus on changes with the highest impact
+
+## Output Format
+After thinking, provide a clear optimization plan:
+- What specific changes to make
+- Which functions/methods to modify
+- What code patterns to use
+- Expected improvement from each change
+
+Be specific about code locations and proposed modifications.
+Do NOT output SEARCH/REPLACE blocks - just describe what should be changed.
+"""
+
+
 class EvolutionPromptBuilder:
     """
     Builds prompts for the mutation agent.
@@ -313,6 +365,111 @@ Provide your changes now:"""
             truncated = truncated[:last_newline]
 
         return truncated + "\n# ... (truncated)"
+
+    def build_analysis_prompt(
+        self,
+        parent: Program,
+        objective: str,
+        top_programs: Optional[List[Program]] = None,
+        inspirations: Optional[List[Program]] = None,
+        artifacts: Optional[Dict[str, Any]] = None,
+        iteration: Optional[int] = None,
+    ) -> str:
+        """
+        Build prompt for analyzer agent with full context.
+
+        The analyzer receives all context (objective, top programs, inspirations,
+        feedback) to analyze problems and design improvement proposals.
+
+        Args:
+            parent: Parent program to analyze
+            objective: Optimization objective
+            top_programs: Best performing programs for reference
+            inspirations: Diverse inspiration programs
+            artifacts: Evaluation artifacts/feedback
+            iteration: Current iteration number
+
+        Returns:
+            Formatted prompt string for analyzer
+        """
+        parts = []
+
+        # Header with objective
+        parts.append(self._build_objective_section(objective, iteration))
+
+        # Current program with full details
+        parts.append(self._build_current_program_section(parent))
+
+        # Top performers for reference
+        if top_programs:
+            parts.append(self._build_top_programs_section(top_programs))
+
+        # Inspirations for alternative approaches
+        if inspirations:
+            parts.append(self._build_inspirations_section(inspirations))
+
+        # Evaluation feedback
+        if artifacts and self.include_artifacts:
+            parts.append(self._build_artifacts_section(artifacts))
+
+        # Analysis task instructions
+        parts.append(self._build_analysis_task_section())
+
+        return "\n\n".join(parts)
+
+    def _build_analysis_task_section(self) -> str:
+        """Build the analysis task instructions section."""
+        return """## Your Task
+
+Analyze the current program and propose specific improvements:
+
+1. **Identify Issues**: What are the main problems or bottlenecks?
+2. **Design Solutions**: What specific changes should be made?
+3. **Specify Locations**: Which functions/methods need modification?
+4. **Explain Benefits**: What improvement does each change provide?
+
+Focus on the optimization objective. Be specific and actionable.
+Provide your analysis and improvement proposal now:"""
+
+    def build_simple_mutation_prompt(
+        self,
+        parent: Program,
+        analysis: str,
+    ) -> str:
+        """
+        Build simplified prompt for mutator with only code and instructions.
+
+        The mutator receives only the code and analyzer's modification instructions,
+        without the full optimization context.
+
+        Args:
+            parent: Parent program to modify
+            analysis: Analyzer's modification instructions
+
+        Returns:
+            Formatted prompt string for mutator
+        """
+        parts = []
+
+        # Current code (all files)
+        parts.append("## Current Code")
+        for path, content in sorted(parent.snapshot.files.items()):
+            truncated = self._truncate_code(content)
+            parts.append(f"\n### {path}")
+            parts.append(f"```python\n{truncated}\n```")
+
+        # Analyzer's instructions
+        parts.append("\n## Modification Instructions")
+        parts.append(analysis)
+
+        # Simple task instruction
+        parts.append("""
+## Your Task
+
+Implement the modifications described above using SEARCH/REPLACE blocks.
+Ensure each SEARCH block exactly matches existing code.""")
+
+        return "\n".join(parts)
 
 
 def build_simple_prompt(

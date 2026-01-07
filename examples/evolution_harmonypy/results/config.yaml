@@ -34,9 +34,14 @@ max_diff_size: 5000
 temperature: 0.7
 max_retries: 3
 mutation_timeout: 120
+use_analyzer: true
+analyzer_model: normal
+analyzer_timeout: 60
+top_programs_probability: 0.5
+inspirations_probability: 0.2
 mutator_model: normal
 feedback_model: normal
-db_path: results/
+db_path: results_test
 workspace_path: null
 save_prompts: true
 save_all_programs: false

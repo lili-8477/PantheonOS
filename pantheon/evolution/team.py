@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import time
 import uuid
 from pathlib import Path
@@ -22,9 +23,27 @@ from .config import EvolutionConfig
 from .database import EvolutionDatabase
 from .evaluator import EvaluationResult, HybridEvaluator
 from .program import CodebaseSnapshot, Program
-from .prompt_builder import EvolutionPromptBuilder, MUTATION_SYSTEM_PROMPT_CODEBASE
+from .prompt_builder import (
+    EvolutionPromptBuilder,
+    MUTATION_SYSTEM_PROMPT_CODEBASE,
+    MUTATION_SYSTEM_PROMPT_SIMPLE,
+    ANALYZER_SYSTEM_PROMPT,
+)
 from .result import EvolutionResult, IterationResult
 from .utils.diff import parse_diff, apply_diff
+
+
+def think(thought: str) -> str:
+    """
+    Use this tool to think through problems step by step.
+
+    Args:
+        thought: Your reasoning, analysis, or intermediate thoughts
+
+    Returns:
+        Acknowledgment that thinking was recorded
+    """
+    return "Thought recorded. Continue your analysis."
 
 
 class EvolutionTeam:
@@ -45,6 +64,7 @@ class EvolutionTeam:
         self,
         mutator: Optional[Any] = None,  # Agent
         evaluator: Optional[Union[HybridEvaluator, Any]] = None,  # HybridEvaluator or Agent
+        analyzer: Optional[Any] = None,  # Agent for code analysis
         critic: Optional[Any] = None,  # Agent
         database: Optional[EvolutionDatabase] = None,
         config: Optional[EvolutionConfig] = None,
@@ -55,6 +75,7 @@ class EvolutionTeam:
         Args:
             mutator: Agent for generating mutations (created if None)
             evaluator: HybridEvaluator or Agent for evaluation
+            analyzer: Agent for code analysis (created if None when use_analyzer=True)
             critic: Optional critic agent for failure analysis
             database: Program database (created if None)
             config: Evolution configuration (created if None)
@@ -76,6 +97,7 @@ class EvolutionTeam:
         # Agents (lazy-initialized)
         self._mutator = mutator
         self._evaluator = evaluator
+        self._analyzer = analyzer
         self._critic = critic
 
         # State
@@ -88,15 +110,37 @@ class EvolutionTeam:
         if self._mutator is None:
             try:
                 from pantheon.agent import Agent
+                # Use simplified prompt when analyzer is enabled
+                system_prompt = (
+                    MUTATION_SYSTEM_PROMPT_SIMPLE
+                    if self.config.use_analyzer
+                    else MUTATION_SYSTEM_PROMPT_CODEBASE
+                )
                 self._mutator = Agent(
                     name="code-mutator",
-                    instructions=MUTATION_SYSTEM_PROMPT_CODEBASE,
+                    instructions=system_prompt,
                     model=self.config.mutator_model,
                     use_memory=False,  # Prevent context accumulation across iterations
                 )
             except ImportError:
                 raise RuntimeError("Pantheon Agent not available for mutation")
         return self._mutator
+
+    async def _ensure_analyzer(self):
+        """Ensure analyzer agent is initialized."""
+        if self._analyzer is None:
+            try:
+                from pantheon.agent import Agent
+                self._analyzer = Agent(
+                    name="code-analyzer",
+                    instructions=ANALYZER_SYSTEM_PROMPT,
+                    model=self.config.analyzer_model,
+                    tools=[think],  # Add thinking tool for deeper reasoning
+                    use_memory=False,  # Prevent context accumulation across iterations
+                )
+            except ImportError:
+                raise RuntimeError("Pantheon Agent not available for analysis")
+        return self._analyzer
 
     async def _ensure_evaluator(self):
         """Ensure evaluator is initialized."""
@@ -440,41 +484,115 @@ class EvolutionTeam:
 
         logger.info(f"Checkpoint saved: iteration {iteration}, {len(self.database.programs)} programs")
 
-    async def _run_iteration(self, iteration: int, max_iterations: int = 0) -> IterationResult:
+    async def _run_iteration(
+        self,
+        iteration: int,
+        max_iterations: int = 0,
+        worker_id: Optional[int] = None,
+    ) -> IterationResult:
         """
         Run a single evolution iteration.
 
         Args:
             iteration: Current iteration number
             max_iterations: Total iterations for logging progress
+            worker_id: Worker ID for parallel execution (None for sequential)
 
         Returns:
             IterationResult with details
         """
         iter_start = time.time()
-        logger.info(f"[{iteration + 1}/{max_iterations}] Starting iteration...")
+        log_prefix = f"[Worker {worker_id}]" if worker_id is not None else f"[{iteration + 1}/{max_iterations}]"
+        logger.info(f"{log_prefix} Starting iteration...")
 
-        # Sample parent and inspirations
-        parent, inspirations = self.database.sample(
+        # Sample parent and inspirations (thread-safe)
+        parent, inspirations = await self.database.sample_async(
             num_inspirations=self.config.num_inspirations,
         )
 
         parent_score = parent.fitness_score(self.config.feature_dimensions)
 
-        # Get top programs for reference
-        top_programs = self.database.get_top_programs(
-            n=self.config.num_top_programs,
-        )
+        # Get top programs for reference (thread-safe)
+        async with self.database._lock:
+            top_programs = self.database.get_top_programs(
+                n=self.config.num_top_programs,
+            )
 
-        # Build mutation prompt
-        prompt = self.prompt_builder.build_mutation_prompt(
-            parent=parent,
-            objective=self.objective,
-            top_programs=top_programs,
-            inspirations=inspirations,
-            artifacts=parent.artifacts,
-            iteration=iteration,
-        )
+        # Apply probability filtering for context sections
+        use_top_programs = random.random() < self.config.top_programs_probability
+        use_inspirations = random.random() < self.config.inspirations_probability
+
+        effective_top_programs = top_programs if use_top_programs else None
+        effective_inspirations = inspirations if use_inspirations else None
+
+        # Build prompt (with or without analyzer)
+        if self.config.use_analyzer:
+            # === Analyzer Phase (full context) ===
+            analysis_start = time.time()
+            try:
+                analyzer = await self._ensure_analyzer()
+                analysis_prompt = self.prompt_builder.build_analysis_prompt(
+                    parent=parent,
+                    objective=self.objective,
+                    top_programs=effective_top_programs,
+                    inspirations=effective_inspirations,
+                    artifacts=parent.artifacts,
+                    iteration=iteration,
+                )
+                analysis_response = await asyncio.wait_for(
+                    analyzer.run(analysis_prompt, update_memory=False),
+                    timeout=self.config.analyzer_timeout
+                )
+                analysis_text = analysis_response.content
+                analysis_time = time.time() - analysis_start
+                logger.info(f"{log_prefix} Analysis: {analysis_time:.1f}s")
+            except asyncio.TimeoutError:
+                analysis_time = time.time() - analysis_start
+                logger.warning(f"{log_prefix} Analyzer timeout after {analysis_time:.1f}s, skipping iteration")
+                return IterationResult(
+                    iteration=iteration,
+                    parent_id=parent.id,
+                    child_id=parent.id,
+                    parent_score=parent_score,
+                    child_score=parent_score,
+                    improvement=0,
+                    accepted=False,
+                    mutation_time=0,
+                    evaluation_time=0,
+                    total_time=time.time() - iter_start,
+                    error="analyzer_timeout",
+                )
+            except Exception as e:
+                logger.warning(f"{log_prefix} Analyzer failed: {e}, skipping iteration")
+                return IterationResult(
+                    iteration=iteration,
+                    parent_id=parent.id,
+                    child_id=parent.id,
+                    parent_score=parent_score,
+                    child_score=parent_score,
+                    improvement=0,
+                    accepted=False,
+                    mutation_time=0,
+                    evaluation_time=0,
+                    total_time=time.time() - iter_start,
+                    error=f"analyzer_failed: {e}",
+                )
+
+            # === Mutator Phase (code + instructions only) ===
+            prompt = self.prompt_builder.build_simple_mutation_prompt(
+                parent=parent,
+                analysis=analysis_text,
+            )
+        else:
+            # Original behavior: mutator gets full context
+            prompt = self.prompt_builder.build_mutation_prompt(
+                parent=parent,
+                objective=self.objective,
+                top_programs=effective_top_programs,
+                inspirations=effective_inspirations,
+                artifacts=parent.artifacts,
+                iteration=iteration,
+            )
 
         # Generate mutation with timeout
         mutation_start = time.time()
@@ -486,10 +604,10 @@ class EvolutionTeam:
                 timeout=self.config.mutation_timeout
             )
             mutation_time = time.time() - mutation_start
-            logger.info(f"  Mutation: {mutation_time:.1f}s")
+            logger.info(f"{log_prefix} Mutation: {mutation_time:.1f}s")
         except asyncio.TimeoutError:
             mutation_time = time.time() - mutation_start
-            logger.warning(f"  Mutation timeout after {mutation_time:.1f}s, using parent unchanged")
+            logger.warning(f"{log_prefix} Mutation timeout after {mutation_time:.1f}s")
             return IterationResult(
                 iteration=iteration,
                 parent_id=parent.id,
@@ -505,16 +623,13 @@ class EvolutionTeam:
             )
 
         # Apply mutation
-        num_changes = 0
         try:
             child_snapshot = self._apply_mutation(parent.snapshot, response.content)
-            # Count changes
             default_file = next(iter(parent.snapshot.files.keys()), "main.py")
             changes = parse_diff(response.content, default_file)
-            num_changes = len(changes)
-            logger.info(f"  Applied {num_changes} change(s)")
+            logger.info(f"{log_prefix} Applied {len(changes)} change(s)")
         except Exception as e:
-            logger.warning(f"  Failed to apply mutation: {e}")
+            logger.warning(f"{log_prefix} Failed to apply mutation: {e}")
             child_snapshot = parent.snapshot
 
         # Create child program
@@ -541,26 +656,25 @@ class EvolutionTeam:
         improvement = child_score - parent_score
 
         # Log evaluation results
-        logger.info(f"  Evaluation: {eval_time:.1f}s, score: {child_score:.4f}")
+        logger.info(f"{log_prefix} Evaluation: {eval_time:.1f}s, score: {child_score:.4f}")
 
         # Log key metrics if available
-        metrics = child.metrics
         metric_parts = []
         for key in ['mixing_score', 'speed_score', 'combined_score']:
-            if key in metrics:
-                metric_parts.append(f"{key.replace('_score', '')}={metrics[key]:.3f}")
+            if key in child.metrics:
+                metric_parts.append(f"{key.replace('_score', '')}={child.metrics[key]:.3f}")
         if metric_parts:
-            logger.info(f"  Metrics: {', '.join(metric_parts)}")
+            logger.info(f"{log_prefix} Metrics: {', '.join(metric_parts)}")
 
-        # Add to database (MAP-Elites decides if kept)
-        accepted = self.database.add(child)
+        # Add to database (thread-safe)
+        accepted = await self.database.add_async(child)
 
         total_time = time.time() - iter_start
 
         # Log result
         result_str = "✓ Improved" if improvement > 0 else "✗ No improvement"
         accepted_str = "(accepted)" if accepted else "(rejected)"
-        logger.info(f"  Result: {result_str} ({improvement:+.4f}) {accepted_str} [{total_time:.1f}s]")
+        logger.info(f"{log_prefix} Result: {result_str} ({improvement:+.4f}) {accepted_str} [{total_time:.1f}s]")
 
         return IterationResult(
             iteration=iteration,
@@ -601,7 +715,7 @@ class EvolutionTeam:
             logger.info(f"[Worker {worker_id}] Starting iteration {iteration + 1}/{max_iterations}")
 
             try:
-                iter_result = await self._run_worker_iteration(worker_id, iteration)
+                iter_result = await self._run_iteration(iteration, max_iterations, worker_id=worker_id)
                 await result_queue.put(iter_result)
             except Exception as e:
                 logger.error(f"[Worker {worker_id}] Iteration {iteration} failed: {e}")
@@ -615,127 +729,6 @@ class EvolutionTeam:
                     accepted=False,
                     error=str(e),
                 ))
-
-    async def _run_worker_iteration(
-        self,
-        worker_id: int,
-        iteration: int,
-    ) -> IterationResult:
-        """
-        Run a single evolution iteration for a worker (thread-safe).
-
-        Args:
-            worker_id: Identifier for this worker
-            iteration: Current iteration number
-
-        Returns:
-            IterationResult with details
-        """
-        iter_start = time.time()
-
-        # Sample parent and inspirations (thread-safe)
-        parent, inspirations = await self.database.sample_async(
-            num_inspirations=self.config.num_inspirations,
-        )
-
-        parent_score = parent.fitness_score(self.config.feature_dimensions)
-
-        # Get top programs (thread-safe)
-        async with self.database._lock:
-            top_programs = self.database.get_top_programs(
-                n=self.config.num_top_programs,
-            )
-
-        # Build mutation prompt
-        prompt = self.prompt_builder.build_mutation_prompt(
-            parent=parent,
-            objective=self.objective,
-            top_programs=top_programs,
-            inspirations=inspirations,
-            artifacts=parent.artifacts,
-            iteration=iteration,
-        )
-
-        # Generate mutation with timeout
-        mutation_start = time.time()
-        mutator = await self._ensure_mutator()
-
-        try:
-            response = await asyncio.wait_for(
-                mutator.run(prompt, update_memory=False),
-                timeout=self.config.mutation_timeout
-            )
-            mutation_time = time.time() - mutation_start
-        except asyncio.TimeoutError:
-            mutation_time = time.time() - mutation_start
-            logger.warning(f"[Worker {worker_id}] Mutation timeout after {mutation_time:.1f}s")
-            return IterationResult(
-                iteration=iteration,
-                parent_id=parent.id,
-                child_id=parent.id,
-                parent_score=parent_score,
-                child_score=parent_score,
-                improvement=0,
-                accepted=False,
-                mutation_time=mutation_time,
-                evaluation_time=0,
-                total_time=time.time() - iter_start,
-                error="mutation_timeout",
-            )
-
-        # Apply mutation
-        try:
-            child_snapshot = self._apply_mutation(parent.snapshot, response.content)
-        except Exception as e:
-            logger.warning(f"[Worker {worker_id}] Failed to apply mutation: {e}")
-            child_snapshot = parent.snapshot
-
-        # Create child program
-        child = Program(
-            id=str(uuid.uuid4())[:8],
-            snapshot=child_snapshot,
-            diff_from_parent=child_snapshot.diff_from(parent.snapshot),
-            parent_id=parent.id,
-            generation=parent.generation + 1,
-            prompt_used=prompt if self.config.save_prompts else "",
-        )
-
-        # Evaluate child
-        eval_start = time.time()
-        evaluator = await self._ensure_evaluator()
-        eval_result = await evaluator.evaluate(child)
-        eval_time = time.time() - eval_start
-
-        child.metrics = eval_result.metrics
-        child.artifacts = eval_result.artifacts
-        child.llm_feedback = eval_result.llm_feedback
-
-        child_score = child.fitness_score(self.config.feature_dimensions)
-        improvement = child_score - parent_score
-
-        # Add to database (thread-safe)
-        accepted = await self.database.add_async(child)
-
-        total_time = time.time() - iter_start
-
-        logger.info(
-            f"[Worker {worker_id}] Iteration {iteration}: "
-            f"score {child_score:.4f} ({improvement:+.4f}) "
-            f"{'accepted' if accepted else 'rejected'} [{total_time:.1f}s]"
-        )
-
-        return IterationResult(
-            iteration=iteration,
-            parent_id=parent.id,
-            child_id=child.id,
-            parent_score=parent_score,
-            child_score=child_score,
-            improvement=improvement,
-            accepted=accepted,
-            mutation_time=mutation_time,
-            evaluation_time=eval_time,
-            total_time=total_time,
-        )
 
     def _apply_mutation(
         self,
