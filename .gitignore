@@ -20,6 +20,9 @@ benchmarks/bixbench/workspaces/
 benchmarks/bixbench/groundtruth/
 benchmarks/bixbench/test_capsules/
 benchmarks/bixbench/__pycache__/
+benchmarks/single_cell_benchmark/results/
+benchmarks/single_cell_benchmark/workspaces/
+benchmarks/single_cell_benchmark/benchmark_data/
 build/
 develop-eggs/
 dist/

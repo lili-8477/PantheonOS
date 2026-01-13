@@ -43,7 +43,7 @@ sc.tl.rank_genes_groups(
 )
 
 # Quick visual check of top ranking genes
-sc.pl.rank_genes_groups(adata, n_genes=10, sharey=False)
+sc.pl.rank_genes_groups(adata, n_genes=10, sharey=False, show=False)
 plt.savefig('cluster_markers.png', dpi=150, bbox_inches='tight')
 plt.show()
 ```
@@ -136,7 +136,7 @@ else:
     
     # 5. Dotplot
     sc.pl.dotplot(adata, var_names=sorted_genes, groupby='leiden',
-                  standard_scale='var', dendrogram=True, return_fig=True)
+                  standard_scale='var', dendrogram=True, show=False)
     plt.savefig('markers_dotplot.png', bbox_inches='tight')
     plt.show()
 ```
@@ -162,7 +162,7 @@ if adata.obs['cell_type'].isnull().any():
     adata.obs['cell_type'] = adata.obs['cell_type'].fillna('Unknown')
 
 # Final Visualization
-sc.pl.umap(adata, color='cell_type', title="Annotated Cell Types", legend_loc='right margin')
+sc.pl.umap(adata, color='cell_type', title="Annotated Cell Types", legend_loc='right margin', show=False)
 plt.savefig('annotation_umap.png', bbox_inches='tight')
 plt.show()
 ```
@@ -261,6 +261,7 @@ sc.pl.heatmap(
     groupby='cell_type',
     cmap='viridis',
     dendrogram=True,
+    show=False
 )
 plt.savefig('markers_heatmap.png', dpi=150, bbox_inches='tight')
 plt.show()

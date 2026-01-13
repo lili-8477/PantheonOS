@@ -371,6 +371,20 @@ Figure file format: In most cases, you should generate both png and pdf files fo
 > After `plt.savefig(...)`, call `plt.show()` so the figure appears in the notebook output for immediate review.
 > This makes it easier to inspect results without opening external files.
 
+### Preventing Blank Figures
+
+> [!CRITICAL]
+> **Use `show=False` when calling scanpy plotting functions.**
+> `sc.pl.umap(..., show=True)` (default) calls `plt.show()`, which closes the figure.
+> Any subsequent `plt.savefig()` will save a **blank image**.
+>
+> **Correct Pattern:**
+> ```python
+> sc.pl.umap(adata, ..., show=False)  # Keep figure open
+> plt.savefig("figure.png", bbox_inches='tight')  # Save
+> plt.show()  # Display inline
+> ```
+
 
 ### Legend Placement
 - Place cell type labels as a legend on the side of the figure, distinguished by color
@@ -393,9 +407,13 @@ Figure file format: In most cases, you should generate both png and pdf files fo
 
 **Verification**:
 After generating a figure, use `observe_images` to verify:
-1. Is the text readable without zooming?
-2. Is the aspect ratio balanced (not a thin strip)?
-3. Are labels or legends truncated? Are text are overlapped?
+1. **Check for BLANK/WHITE images**: If the image is blank, you **MUST** stop and fix your code (usually requires `show=False` in scanpy functions).
+   - **Do NOT continue analysis with a blank image.**
+   - **Do NOT hallucinate content for a blank image.**
+2. Is the text readable without zooming?
+3. Is the aspect ratio balanced (not a thin strip)?
+4. Are labels or legends truncated? Are text are overlapped?
+
 If any issue exists, **regenerate the figure** with adjusted parameters immediately.
 
 

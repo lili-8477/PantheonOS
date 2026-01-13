@@ -28,6 +28,18 @@ def submit_answer(answers: dict) -> dict:
     Returns:
         Confirmation of submission with all answers recorded.
     """
+    # Validate keys for extra quotes (common LLM mistake)
+    malformed_keys = []
+    for key in answers.keys():
+        if key.startswith('"') or key.startswith("'") or key.endswith('"') or key.endswith("'"):
+            malformed_keys.append(key)
+    
+    if malformed_keys:
+        return {
+            "status": "error",
+            "message": f"Invalid answer format. Keys should not be quoted strings inside the JSON object. Found malformed keys: {malformed_keys}. Please resubmit with clean keys (e.g., 'q1' instead of '\"q1\"')."
+        }
+
     return {"status": "submitted", "answers": answers, "count": len(answers)}
 
 
@@ -40,11 +52,13 @@ class PantheonBixBenchAdapter:
         enable_learning: bool = False,
         workspace_path: str = None,
         learning_config: dict = None,
+        team: str = "default",
     ):
         self.model_name = model_name
         self.enable_learning = enable_learning
         self.workspace_path = workspace_path or str(Path.cwd())
         self.learning_config = learning_config  # User-provided learning config
+        self.team_name = team
         self._team = None
         self._endpoint = None
         self._learning_plugin = None
@@ -68,15 +82,12 @@ class PantheonBixBenchAdapter:
         
         return self._endpoint
     
-    async def _ensure_team(self):
-        """Lazily initialize the team with endpoint."""
-        if self._team is not None:
-            return
-        
+    async def _create_fresh_team(self):
+        """Create a fresh team instance for a task."""
         from pantheon.factory import create_team_from_template
         from pantheon.settings import get_settings
         
-        # Ensure endpoint is ready
+        # Ensure endpoint is ready (reused across tasks)
         endpoint = await self._ensure_endpoint()
         
         # Prepare learning config if enabled
@@ -97,16 +108,18 @@ class PantheonBixBenchAdapter:
                 learning_config.update(self.learning_config)
         
         # Create team with endpoint_service
-        self._team = await create_team_from_template(
+        team = await create_team_from_template(
             endpoint_service=endpoint,  # Pass endpoint for tools
-            template_id="default",
+            template_id=self.team_name,
             learning_config=learning_config,
             enable_mcp=False,  # Disable MCP for benchmark (simpler)
         )
         
         # Register BixBench-specific tools on leader agent
-        leader_agent = self._team.team_agents[0]
+        leader_agent = team.team_agents[0]
         leader_agent.tool(submit_answer)
+        
+        return team
     
     async def run_task(
         self,
@@ -128,11 +141,11 @@ class PantheonBixBenchAdapter:
         Returns:
             Result dict with answers, trajectory info, and official-compatible format
         """
-        # Update workspace path if provided
         if workspace_path:
             self.workspace_path = workspace_path
         
-        await self._ensure_team()
+        # Create fresh team for this task to ensure isolation
+        team = await self._create_fresh_team()
         
         from pantheon.memory import Memory
         from pantheon.utils.display import print_agent_message
@@ -275,7 +288,7 @@ class PantheonBixBenchAdapter:
                 print(f"    [{step_count[0]:02d}] 📝 {agent_name} ({role})")
         
         # Run the team with progress callback
-        result = await self._team.run(
+        result = await team.run(
             msg=prompt,
             memory=memory,
             process_step_message=process_step_message,
@@ -287,8 +300,27 @@ class PantheonBixBenchAdapter:
         
         # Prefer tool-based extraction, fallback to text extraction
         answers = self._extract_answers_from_tool_calls(messages, capsule_info["questions"])
+        
+        # If no answers found, give the agent ONE chance to fix it
         if not answers:
-            answers = self._extract_answers(content, capsule_info["questions"])
+            print("    ⚠️  No answers submitted. Triggering retry turn...")
+            retry_msg = "You have verified the task but have not submitted the final answer via the `submit_answer` tool. Please submit your conclusion immediately."
+            
+            # Run one more turn with the same memory
+            result = await team.run(
+                msg=retry_msg,
+                memory=memory,
+                process_step_message=process_step_message,
+            )
+            
+            # Refresh messages and try extracting again
+            messages = memory.get_messages()
+            answers = self._extract_answers_from_tool_calls(messages, capsule_info["questions"])
+
+        if not answers:
+            # content can be None if agent returns no content; ensure string for regex
+            safe_content = content or ""
+            answers = self._extract_answers(safe_content, capsule_info["questions"])
         
         # Get trajectory info
         messages = memory.get_messages()
@@ -351,10 +383,10 @@ class PantheonBixBenchAdapter:
             except Exception as e:
                 print(f"Warning: Failed to cleanup endpoint: {e}")
         self._endpoint = None
-        self._team = None
+        # No need to cleanup self._team as it's local now
     
     def _extract_answers_from_tool_calls(self, messages: list, questions: list) -> dict:
-        """Extract answers from submit_answer tool calls in messages.
+        """Extract answers from the LAST submit_answer tool call.
         
         Args:
             messages: List of conversation messages
@@ -365,6 +397,8 @@ class PantheonBixBenchAdapter:
         """
         answers = {}
         question_ids = {q["id"] for q in questions}
+        
+        last_valid_submitted_answers = None
         
         for msg in messages:
             # Handle dict format
@@ -400,16 +434,23 @@ class PantheonBixBenchAdapter:
                         continue
                 
                 submitted = func_args.get("answers", {})
-                if not isinstance(submitted, dict):
-                    continue
+                if isinstance(submitted, dict) and submitted:
+                    # Found a valid submission, update our candidate
+                    # This overwrites any previous candidate, so we end up with the last one
+                    last_valid_submitted_answers = submitted
+        
+        # If we found at least one valid submission, process the last one
+        if last_valid_submitted_answers:
+            for qid, ans in last_valid_submitted_answers.items():
+                # Sanitize key: remove surrounding quotes and escaped quotes
+                # e.g. "\"q1\"" -> "q1", "'q1'" -> "q1"
+                clean_qid = qid.strip("\"'").replace('\\"', '').replace("\\'", "")
                 
-                # Match submitted IDs to full question IDs
-                for qid, ans in submitted.items():
-                    for full_id in question_ids:
-                        # Match full ID or short ID (e.g., "q1" matches "bix-1-q1")
-                        if qid == full_id or full_id.endswith(f"-{qid}"):
-                            answers[full_id] = str(ans)
-                            break
+                for full_id in question_ids:
+                    # Match full ID or short ID (e.g., "q1" matches "bix-1-q1")
+                    if clean_qid == full_id or full_id.endswith(f"-{clean_qid}"):
+                        answers[full_id] = str(ans)
+                        break
         
         return answers
     
@@ -497,6 +538,7 @@ class PantheonBixBenchAdapter:
         agent_answer: str,
         run_name: str = "baseline",
         notebook_json: dict = None,
+        team: str = "default",
     ) -> dict:
         """
         Generate a trajectory record in official BixBench format.
@@ -507,6 +549,7 @@ class PantheonBixBenchAdapter:
             agent_answer: The agent's extracted answer
             run_name: Run identifier (baseline, with_learning, etc.)
             notebook_json: Optional notebook JSON if available
+            team: Team used for the run
             
         Returns:
             Dict in official BixBench trajectory format
@@ -521,4 +564,5 @@ class PantheonBixBenchAdapter:
             "hypothesis": capsule_info.get("hypothesis", ""),
             "run_name": run_name,
             "nb": notebook_json,
+            "team": team,
         }

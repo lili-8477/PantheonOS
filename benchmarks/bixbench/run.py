@@ -122,7 +122,25 @@ def attempt_recover_result(
         if not found_q_files and not memory_file.exists():
             return None
             
-        # 3. Construct Result Object
+            # 3. Construct Result Object
+        recovered_team = getattr(question_details.get(list(question_details.keys())[0], {}), "team", None)
+        # If we couldn't get it from memory (not implemented there yet) or question files, default to None?
+        # Actually, let's look mainly at the question file as that's where we save the final record.
+        
+        # Try to find team in the first valid question file we parsed
+        team = default
+        if found_q_files:
+             # Iterate through available trajectory files to find team
+             for qid in capsule_info.get("questions", []):
+                 q_id = qid["id"]
+                 t_file = output_dir / f"{q_id}.json"
+                 if t_file.exists():
+                     with open(t_file) as f:
+                        data = json.load(f)
+                        if "team" in data:
+                            team = data["team"]
+                            break
+        
         return {
             "capsule_id": capsule_id,
             "status": "completed",
@@ -138,6 +156,7 @@ def attempt_recover_result(
             "duration": 0.0, # Cannot recover duration easily, set to 0
             "message_count": message_count,
             "memory_file": str(memory_file) if memory_file.exists() else None,
+            "team": team,
         }
         
     except Exception as e:
@@ -153,6 +172,7 @@ async def run_benchmark(
     continue_from: str = None,
     skillbook_path: str = None,
     learning_config: dict = None,
+    team: str = "default",
 ):
     """Run BixBench benchmark with Pantheon agent.
     
@@ -164,6 +184,7 @@ async def run_benchmark(
         continue_from: Path to previous run directory to continue from (skips completed capsules)
         skillbook_path: Path to skillbook.json for injection (overrides settings)
         learning_config: Full learning config dict (overrides all settings)
+        team: Team template ID to use (default: default)
     """
     # Setup logging to file
     log_file = setup_logging(log_level=log_level)
@@ -247,6 +268,7 @@ async def run_benchmark(
     print(f"📋 Running benchmark on {len(capsules)} capsules")
     print(f"🧠 Learning: {'Enabled' if enable_learning else 'Disabled'}")
     print(f"📝 Run name: {run_name}")
+    print(f"👥 Team: {team}")
     
     # Build learning config
     adapter_learning_config = None
@@ -272,6 +294,7 @@ async def run_benchmark(
         model_name="gemini/gemini-3-flash-preview",
         enable_learning=enable_learning,
         learning_config=adapter_learning_config,
+        team=team,
     )
     grader = BixBenchGrader()
     
@@ -393,6 +416,7 @@ async def run_benchmark(
                     question=q,
                     agent_answer=agent_answer,
                     run_name=run_name,
+                    team=team,
                 )
                 
                 # Add grading result
@@ -452,7 +476,9 @@ async def run_benchmark(
                 "cost": capsule_cost,
                 "duration": capsule_duration,
                 "message_count": capsule_message_count,
+                "message_count": capsule_message_count,
                 "memory_file": str(memory_file) if memory_file.exists() else None,
+                "team": team,
             }
             
             total_correct += grade_result["correct"]
@@ -497,6 +523,7 @@ async def run_benchmark(
         "timestamp": timestamp,
         "updated_at": datetime.now().strftime("%Y%m%d_%H%M%S"),  # Track update time
         "run_name": run_name,
+        "team": team,
         "enable_learning": enable_learning,
         "capsule_count": len(all_results),
         "total_questions": total_questions,
@@ -559,6 +586,8 @@ def main():
                         help="Path to previous run directory to continue from")
     parser.add_argument("--skillbook-path", default=None,
                         help="Path to skillbook.json for skill injection (overrides settings)")
+    parser.add_argument("--team", default="default",
+                        help="Team template ID to use (default: default)")
     
     args = parser.parse_args()
     
@@ -569,6 +598,7 @@ def main():
         log_level=args.log_level,
         continue_from=args.continue_from,
         skillbook_path=args.skillbook_path,
+        team=args.team,
     ))
 
 

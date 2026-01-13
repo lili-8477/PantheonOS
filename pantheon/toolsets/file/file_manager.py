@@ -407,6 +407,45 @@ def path_to_image_url(path: str) -> str:
             return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
 
 
+def is_image_blank(image_path: str | Path) -> bool:
+    """Check if an image is likely blank (pure white, black, or transparent).
+
+    Checks:
+    1. Full transparency
+    2. Zero standard deviation (solid color)
+    3. Min == Max (solid color fallback)
+    """
+    try:
+        from PIL import Image, ImageStat
+        with Image.open(image_path) as img:
+            # Check transparency first
+            if img.mode in ('RGBA', 'LA') and img.getextrema()[-1][1] == 0:
+                return True
+                
+            # Convert to grayscale for content analysis
+            gray_img = img.convert("L")
+            
+            # Method 1: Standard Deviation
+            try:
+                stat = ImageStat.Stat(gray_img)
+                if sum(stat.stddev) == 0:
+                    return True
+            except Exception:
+                # Fallback if stat calculation fails (e.g., math domain error on some systems)
+                pass
+
+            # Method 2: Extrema (Min == Max)
+            # This is a robust fallback for solid colors
+            extrema = gray_img.getextrema()
+            if extrema[0] == extrema[1]:
+                return True
+                
+            return False
+    except Exception:
+        # If we can't open/analyze it, assume it's not strictly "blank" in the trivial sense
+        return False
+
+
 class FileManagerToolSet(FileManagerToolSetBase):
     """Extended file manager toolset.
     Builds on the base class with higher-level helpers:
@@ -707,13 +746,26 @@ class FileManagerToolSet(FileManagerToolSetBase):
 
         # Call LLM to analyze images
         try:
+            # Check for blank images FIRST
+            blank_warnings = []
+            for img_path in image_paths:
+                if is_image_blank(self.path / img_path):
+                    blank_warnings.append(f"WARNING: Image '{img_path}' appears to be BLANK (solid color or transparent). The image contains no visual information. Please check how this image was generated.")
+
             response = await context.call_agent(messages=messages, use_memory=True)
             
             # Build result with cost passthrough
             # call_agent always returns {"success": True, "response": ..., "_metadata": {...}}
+            content = response.get("response", "")
+            
+            # Prepend blank warnings to the content so the Agent sees them immediately
+            if blank_warnings:
+                warning_msg = "\n".join(blank_warnings)
+                content = f"SYSTEM DETECTED ISSUES:\n{warning_msg}\n\nLLM Observation:\n{content}"
+
             result = {
                 "success": True, 
-                "content": response.get("response", ""),
+                "content": content,
             }
             # Merge _metadata from nested agent call (contains current_cost)
             if "_metadata" in response:
