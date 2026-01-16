@@ -1070,6 +1070,10 @@ class EvolutionDatabase:
             logger.info("Rebuilding metric_ranges from programs (legacy format)")
             db._rebuild_metric_ranges_from_programs()
 
+        # Recalculate best_program_id using current fitness calculation
+        # This fixes issues with legacy databases where fitness was calculated incorrectly
+        db._recalculate_best_program()
+
         logger.info(f"Loaded database with {len(db.programs)} programs from {path}")
         return db
 
@@ -1107,3 +1111,38 @@ class EvolutionDatabase:
         for program in self.programs.values():
             self._update_metric_ranges(program.metrics)
         logger.info(f"Rebuilt metric_ranges from {len(self.programs)} programs")
+
+    def _recalculate_best_program(self) -> None:
+        """
+        Recalculate best_program_id using current fitness calculation.
+
+        This fixes issues with legacy databases where fitness was calculated
+        incorrectly (e.g., using fallback logic that gave high scores to
+        failed evaluations).
+        """
+        if not self.programs:
+            self.best_program_id = None
+            return
+
+        best_id = None
+        best_fitness = -float('inf')
+
+        for prog_id, program in self.programs.items():
+            fitness = program.fitness_score(
+                self.config.feature_dimensions,
+                self.metric_ranges,
+                self.config.function_weight,
+                self.config.llm_weight,
+            )
+            if fitness > best_fitness:
+                best_fitness = fitness
+                best_id = prog_id
+
+        old_best = self.best_program_id
+        self.best_program_id = best_id
+
+        if old_best != best_id:
+            logger.info(
+                f"Recalculated best_program_id: {old_best[:8] if old_best else 'None'} -> "
+                f"{best_id[:8] if best_id else 'None'} (fitness: {best_fitness:.4f})"
+            )
