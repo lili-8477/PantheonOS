@@ -1,20 +1,27 @@
 """
 Shared evaluation metrics for batch correction algorithm evolution.
 
-This module provides common evaluation functions used by both Harmony and Scanorama
+This module provides common evaluation functions used by Harmony, BBKNN, and Scanorama
 evaluators for measuring batch correction quality:
 
 1. Data loading utilities for TMA datasets
 2. Batch mixing score (kNN-based)
 3. Biological conservation score (silhouette-based)
+4. Standard fitness weights and metric computation
+5. Utility functions for evaluator implementation
+
+Usage:
+    Evaluators can load this module via importlib using the METRICS_MODULE_PATH
+    environment variable set by run_evolution.py.
 """
 
+import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import silhouette_score
-from typing import Tuple
+from typing import Dict, Any, Tuple, Optional
 
 
 def load_tma_data(
@@ -121,16 +128,122 @@ def compute_bio_conservation_score(
         return 0.5
 
 
-def get_default_fitness_weights() -> dict:
+def get_default_fitness_weights(include_convergence: bool = False) -> Dict[str, float]:
     """
     Get default fitness weights for batch correction evaluation.
+
+    Args:
+        include_convergence: If True, include convergence_score (for Harmony)
 
     Returns:
         Dictionary with metric weights
     """
+    if include_convergence:
+        return {
+            "mixing_score": 0.45,
+            "bio_conservation_score": 0.45,
+            "speed_score": 0.05,
+            "convergence_score": 0.05,
+        }
+    else:
+        return {
+            "mixing_score": 0.45,
+            "bio_conservation_score": 0.45,
+            "speed_score": 0.10,
+        }
+
+
+def get_data_dir(env_var: str = "DATA_DIR") -> Path:
+    """
+    Get the shared data directory path.
+
+    Tries in order:
+    1. Environment variable specified by env_var
+    2. Hardcoded absolute path (for exec() context)
+    3. Relative path from __file__ (for direct execution)
+
+    Args:
+        env_var: Name of environment variable containing data path
+
+    Returns:
+        Path to data directory
+    """
+    # Check environment variable first
+    env_data_dir = os.environ.get(env_var)
+    if env_data_dir:
+        return Path(env_data_dir)
+
+    # Hardcoded absolute path (required for exec() context where __file__ is not defined)
+    absolute_path = Path("/Users/wzxu/Projects/Pantheon/pantheon-agents/examples/evolution_batch_correction/data")
+    if absolute_path.exists():
+        return absolute_path
+
+    # Try relative path (works when running directly with __file__ defined)
+    try:
+        relative_path = Path(__file__).parent / "data"
+        if relative_path.exists():
+            return relative_path
+    except NameError:
+        pass  # __file__ not defined in exec() context
+
+    return absolute_path
+
+
+def compute_standard_metrics(
+    X_corrected: np.ndarray,
+    X_original: np.ndarray,
+    batch_labels: np.ndarray,
+    celltype_labels: np.ndarray,
+    execution_time: float,
+    include_convergence: bool = False,
+    convergence_score: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Compute all standard batch correction metrics.
+
+    Args:
+        X_corrected: Corrected embedding
+        X_original: Original embedding
+        batch_labels: Batch assignments
+        celltype_labels: True cell type labels
+        execution_time: Time taken to run the algorithm
+        include_convergence: If True, include convergence_score
+        convergence_score: Pre-computed convergence score (required if include_convergence)
+
+    Returns:
+        Dictionary with all metrics and fitness_weights
+    """
+    mixing_score = compute_batch_mixing_score(X_corrected, batch_labels)
+    bio_score = compute_bio_conservation_score(X_corrected, X_original, celltype_labels)
+    speed_score = 1.0 / (1 + execution_time)
+
+    result = {
+        "mixing_score": mixing_score,
+        "bio_conservation_score": bio_score,
+        "speed_score": speed_score,
+        "execution_time": execution_time,
+        "n_cells": len(X_original),
+        "n_batches": len(np.unique(batch_labels)),
+        "fitness_weights": get_default_fitness_weights(include_convergence),
+    }
+
+    if include_convergence and convergence_score is not None:
+        result["convergence_score"] = convergence_score
+
+    return result
+
+
+def error_result(message: str) -> Dict[str, Any]:
+    """
+    Create standard error result for evaluators.
+
+    Args:
+        message: Error description
+
+    Returns:
+        Dictionary with function_score=0.0 and error message
+    """
     return {
-        "mixing_score": 0.45,
-        "bio_conservation_score": 0.45,
-        "speed_score": 0.05,
-        "convergence_score": 0.05,
+        "function_score": 0.0,
+        "error": message,
     }

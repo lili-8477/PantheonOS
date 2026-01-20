@@ -26,9 +26,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
-# Set data dir so evaluator can find data when running in temp workspace
+# Set environment variables so evaluator can find shared modules and data
 _example_dir = Path(__file__).parent.resolve()
 os.environ.setdefault("BBKNN_DATA_DIR", str(_example_dir.parent / "data"))
+os.environ.setdefault("METRICS_MODULE_PATH", str(_example_dir.parent / "metrics.py"))
 
 
 async def run_evolution(

@@ -1,0 +1,26 @@
+[
+  {
+    "0a74005c": {
+      "mixing_score": 0.6429781250000001,
+      "speed_score": 0.4396895811080947,
+      "bio_conservation_score": 0.6036321090454313
+    },
+    "4d36f05c": {
+      "mixing_score": 0.66597975,
+      "speed_score": 0.8638292666551058,
+      "bio_conservation_score": 0.5935985038181825
+    }
+  },
+  {
+    "6033e74e": {
+      "mixing_score": 0.5634814375000001,
+      "speed_score": 0.8260777425802167,
+      "bio_conservation_score": 0.5934806825595695
+    },
+    "e807fd9f": {
+      "mixing_score": 0.6593978125,
+      "speed_score": 0.7653169065483315,
+      "bio_conservation_score": 0.5915471045851375
+    }
+  }
+]

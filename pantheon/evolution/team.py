@@ -825,6 +825,10 @@ class EvolutionTeam:
                     artifacts=parent.artifacts,
                     iteration=iteration,
                     exploration_history=evolution_history_text,  # Always include history
+                    metric_ranges=self.database.metric_ranges,
+                    feature_dimensions=self.config.feature_dimensions,
+                    function_weight=self.config.function_weight,
+                    llm_weight=self.config.llm_weight,
                 )
                 # analysis_prompt is already stored above for program record
                 analysis_response = await asyncio.wait_for(
@@ -885,6 +889,10 @@ class EvolutionTeam:
                 inspirations=effective_inspirations,
                 artifacts=parent.artifacts,
                 iteration=iteration,
+                metric_ranges=self.database.metric_ranges,
+                feature_dimensions=self.config.feature_dimensions,
+                function_weight=self.config.function_weight,
+                llm_weight=self.config.llm_weight,
             )
 
         # Generate mutation with timeout

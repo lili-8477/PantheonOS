@@ -847,7 +847,7 @@ def assemble(datasets, verbose=VERBOSE, view_match=False, knn=KNN,
 
             bias = transform(curr_ds, curr_ref, ds_ind, ref_ind, sigma=sigma,
                              batch_size=batch_size)
-            datasets[i] = curr_ds + bias
+            datasets[i] = np.asarray(curr_ds + bias)
 
             if expr_datasets:
                 curr_ds = expr_datasets[i]
@@ -878,7 +878,7 @@ def assemble(datasets, verbose=VERBOSE, view_match=False, knn=KNN,
 
             bias = transform(curr_ds, curr_ref, ds_ind, ref_ind, sigma=sigma,
                              batch_size=batch_size)
-            datasets[j] = curr_ds + bias
+            datasets[j] = np.asarray(curr_ds + bias)
 
             if expr_datasets:
                 curr_ds = expr_datasets[j]
@@ -932,7 +932,7 @@ def assemble(datasets, verbose=VERBOSE, view_match=False, knn=KNN,
             # Apply transformation to entire panorama.
             bias = transform(curr_ds, curr_ref, ds_ind, ref_ind, sigma=sigma,
                              batch_size=batch_size)
-            curr_ds += bias
+            curr_ds = np.asarray(curr_ds + bias)
             base = 0
             for p in panoramas_i[0]:
                 n_cells = datasets[p].shape[0]
@@ -1027,6 +1027,6 @@ def assemble_accum(datasets, verbose=VERBOSE, knn=KNN, sigma=SIGMA,
 
         bias = transform(ds1, ds2, ds_ind, ref_ind, sigma=sigma,
                          batch_size=batch_size)
-        datasets[j] = ds1 + bias
+        datasets[j] = np.asarray(ds1 + bias)
 
     return datasets

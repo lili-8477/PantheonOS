@@ -11,44 +11,91 @@ We evaluate by computing a spectral embedding from the corrected graph.
 """
 
 import numpy as np
-import pandas as pd
 import time
 import sys
 import os
 import importlib.util
 from pathlib import Path
-from sklearn.neighbors import NearestNeighbors
-from sklearn.metrics import silhouette_score
 from sklearn.manifold import SpectralEmbedding
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 
-def _get_data_dir() -> Path:
-    """Get the shared data directory path."""
+# =============================================================================
+# Shared metrics loading via importlib
+# =============================================================================
+
+_metrics_module = None
+
+
+def _load_shared_metrics():
+    """
+    Load shared metrics module via environment variable.
+
+    Returns the module if successful, None otherwise.
+    """
+    global _metrics_module
+    if _metrics_module is not None:
+        return _metrics_module
+
+    metrics_path = os.environ.get("METRICS_MODULE_PATH")
+    if metrics_path and Path(metrics_path).exists():
+        try:
+            spec = importlib.util.spec_from_file_location("shared_metrics", metrics_path)
+            metrics = importlib.util.module_from_spec(spec)
+            sys.modules["shared_metrics"] = metrics
+            spec.loader.exec_module(metrics)
+            _metrics_module = metrics
+            return metrics
+        except Exception:
+            pass
+    return None
+
+
+# =============================================================================
+# Fallback implementations (used if shared metrics cannot be loaded)
+# =============================================================================
+
+def _get_data_dir_fallback() -> Path:
+    """Fallback: Get the shared data directory path."""
     env_data_dir = os.environ.get("BBKNN_DATA_DIR")
     if env_data_dir:
         return Path(env_data_dir)
-    return Path(__file__).parent.parent / "data"
+
+    absolute_path = Path("/Users/wzxu/Projects/Pantheon/pantheon-agents/examples/evolution_batch_correction/data")
+    if absolute_path.exists():
+        return absolute_path
+
+    try:
+        relative_path = Path(__file__).parent.parent / "data"
+        if relative_path.exists():
+            return relative_path
+    except NameError:
+        pass
+
+    return absolute_path
 
 
-def load_tma_data(
+def _load_tma_data_fallback(
     data_dir: Path,
     split: str = "train",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load TMA data with real cell type labels."""
+    """Fallback: Load TMA data with real cell type labels."""
+    import pandas as pd
     df = pd.read_csv(data_dir / f"tma_8000_{split}.csv")
-    X = df.iloc[:, :30].values  # PC1-PC30
+    X = df.iloc[:, :30].values
     batch_labels = df["donor"].values
     celltype_labels = df["celltype"].values
     return X, batch_labels, celltype_labels
 
 
-def compute_batch_mixing_score(
+def _compute_batch_mixing_score_fallback(
     X: np.ndarray,
     batch_labels: np.ndarray,
     k: int = 50,
 ) -> float:
-    """Compute batch mixing score using k-nearest neighbors."""
+    """Fallback: Compute batch mixing score using k-nearest neighbors."""
+    from sklearn.neighbors import NearestNeighbors
+
     n_cells = X.shape[0]
     unique_batches = np.unique(batch_labels)
 
@@ -74,12 +121,13 @@ def compute_batch_mixing_score(
     return np.mean(mixing_scores)
 
 
-def compute_bio_conservation_score(
+def _compute_bio_conservation_score_fallback(
     X_corrected: np.ndarray,
     X_original: np.ndarray,
     true_labels: np.ndarray,
 ) -> float:
-    """Compute biological structure conservation score using silhouette score."""
+    """Fallback: Compute biological structure conservation score."""
+    from sklearn.metrics import silhouette_score
     try:
         if len(np.unique(true_labels)) > 1:
             silhouette = silhouette_score(X_corrected, true_labels)
@@ -89,6 +137,57 @@ def compute_bio_conservation_score(
     except Exception:
         return 0.5
 
+
+def _get_default_fitness_weights_fallback() -> Dict[str, float]:
+    """Fallback: Get default fitness weights."""
+    return {
+        "mixing_score": 0.45,
+        "bio_conservation_score": 0.45,
+        "speed_score": 0.10,
+    }
+
+
+def _error_result_fallback(message: str) -> Dict[str, Any]:
+    """Fallback: Create standard error result."""
+    return {
+        "function_score": 0.0,
+        "error": message,
+    }
+
+
+# =============================================================================
+# Get functions (use shared metrics if available, fallback otherwise)
+# =============================================================================
+
+def _get_functions():
+    """Get metric functions, preferring shared module if available."""
+    metrics = _load_shared_metrics()
+
+    if metrics:
+        return {
+            "load_tma_data": metrics.load_tma_data,
+            "get_data_dir": lambda: metrics.get_data_dir("BBKNN_DATA_DIR"),
+            "compute_batch_mixing_score": metrics.compute_batch_mixing_score,
+            "compute_bio_conservation_score": metrics.compute_bio_conservation_score,
+            "get_default_fitness_weights": lambda: metrics.get_default_fitness_weights(include_convergence=False),
+            "error_result": metrics.error_result,
+            "compute_standard_metrics": metrics.compute_standard_metrics,
+        }
+    else:
+        return {
+            "load_tma_data": _load_tma_data_fallback,
+            "get_data_dir": _get_data_dir_fallback,
+            "compute_batch_mixing_score": _compute_batch_mixing_score_fallback,
+            "compute_bio_conservation_score": _compute_bio_conservation_score_fallback,
+            "get_default_fitness_weights": _get_default_fitness_weights_fallback,
+            "error_result": _error_result_fallback,
+            "compute_standard_metrics": None,  # Use manual computation
+        }
+
+
+# =============================================================================
+# BBKNN-specific functions
+# =============================================================================
 
 def graph_to_embedding(
     connectivities,
@@ -104,22 +203,29 @@ def graph_to_embedding(
     Returns:
         Embedding array (n_cells x n_components)
     """
-    # Make the matrix symmetric
     conn_sym = (connectivities + connectivities.T) / 2
-
-    # Use spectral embedding
     se = SpectralEmbedding(
         n_components=n_components,
         affinity='precomputed',
         random_state=42,
     )
-
-    # SpectralEmbedding expects affinity matrix (similarity)
-    # connectivities from BBKNN is already a similarity matrix
     embedding = se.fit_transform(conn_sym.toarray())
-
     return embedding
 
+
+def _load_bbknn_module(bbknn_path: Path):
+    """Load the BBKNN matrix module from workspace."""
+    matrix_path = bbknn_path / "matrix.py"
+    spec_matrix = importlib.util.spec_from_file_location("bbknn.matrix", matrix_path)
+    matrix_module = importlib.util.module_from_spec(spec_matrix)
+    sys.modules["bbknn.matrix"] = matrix_module
+    spec_matrix.loader.exec_module(matrix_module)
+    return matrix_module
+
+
+# =============================================================================
+# Main evaluation function
+# =============================================================================
 
 def evaluate(workspace_path: str) -> Dict[str, Any]:
     """
@@ -129,152 +235,101 @@ def evaluate(workspace_path: str) -> Dict[str, Any]:
         workspace_path: Path to the workspace containing bbknn package
 
     Returns:
-        Dictionary with metrics including 'combined_score'
+        Dictionary with metrics and fitness_weights
     """
+    funcs = _get_functions()
     workspace = Path(workspace_path)
 
     # Load the bbknn module from workspace
     bbknn_path = workspace / "bbknn"
     if not bbknn_path.exists():
-        return {
-            "combined_score": 0.0,
-            "error": "bbknn package not found",
-        }
+        if (workspace / "matrix.py").exists():
+            bbknn_path = workspace
+        else:
+            return funcs["error_result"]("bbknn package not found")
 
     try:
-        # Import matrix module first
-        matrix_path = bbknn_path / "matrix.py"
-        spec_matrix = importlib.util.spec_from_file_location(
-            "bbknn.matrix", matrix_path
-        )
-        matrix_module = importlib.util.module_from_spec(spec_matrix)
-        sys.modules["bbknn.matrix"] = matrix_module
-        spec_matrix.loader.exec_module(matrix_module)
-
-        # Import main bbknn module
-        init_path = bbknn_path / "__init__.py"
-        spec = importlib.util.spec_from_file_location("bbknn", init_path)
-        bbknn_module = importlib.util.module_from_spec(spec)
-        sys.modules["bbknn"] = bbknn_module
-        spec.loader.exec_module(bbknn_module)
-
+        matrix_module = _load_bbknn_module(bbknn_path)
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load bbknn: {e}",
-        }
+        return funcs["error_result"](f"Failed to load bbknn: {e}")
 
     # Load TMA training data
-    data_dir = _get_data_dir()
+    data_dir = funcs["get_data_dir"]()
 
     try:
-        X_train, batch_train, celltype_train = load_tma_data(data_dir, split="train")
+        X_train, batch_train, celltype_train = funcs["load_tma_data"](data_dir, split="train")
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load TMA data: {e}",
-        }
-
-    n_cells = len(X_train)
+        return funcs["error_result"](f"Failed to load TMA data: {e}")
 
     # Run bbknn and measure time
     try:
         start_time = time.time()
 
-        # Use the matrix.bbknn function which works with numpy arrays
         distances, connectivities, params = matrix_module.bbknn(
             pca=X_train,
             batch_list=batch_train,
             neighbors_within_batch=3,
             n_pcs=30,
-            computation='cKDTree',  # Use exact KNN (no annoy dependency)
+            computation='cKDTree',
             metric='euclidean',
         )
 
         execution_time = time.time() - start_time
-
-        # Convert graph to embedding for evaluation
         X_corrected = graph_to_embedding(connectivities, n_components=30)
 
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"BBKNN execution failed: {e}",
-        }
+        return funcs["error_result"](f"BBKNN execution failed: {e}")
 
     # Compute metrics
     try:
-        # Batch mixing (higher = better)
-        mixing_score = compute_batch_mixing_score(X_corrected, batch_train)
+        if funcs["compute_standard_metrics"]:
+            # Use shared compute_standard_metrics
+            return funcs["compute_standard_metrics"](
+                X_corrected, X_train, batch_train, celltype_train, execution_time
+            )
+        else:
+            # Manual computation using fallback functions
+            mixing_score = funcs["compute_batch_mixing_score"](X_corrected, batch_train)
+            bio_score = funcs["compute_bio_conservation_score"](X_corrected, X_train, celltype_train)
+            speed_score = 1.0 / (1 + execution_time)
 
-        # Biological conservation using real cell type labels
-        bio_score = compute_bio_conservation_score(
-            X_corrected, X_train, celltype_train
-        )
-
-        # Speed score (faster = better)
-        speed_score = 1.0 / (1 + execution_time)
-
-        # Combined score
-        combined_score = (
-            0.45 * mixing_score +
-            0.45 * bio_score +
-            0.10 * speed_score
-        )
-
-        return {
-            "combined_score": combined_score,
-            "mixing_score": mixing_score,
-            "bio_conservation_score": bio_score,
-            "speed_score": speed_score,
-            "execution_time": execution_time,
-            "n_cells": n_cells,
-            "n_batches": len(np.unique(batch_train)),
-            "dataset": "tma_train",
-        }
+            return {
+                "mixing_score": mixing_score,
+                "bio_conservation_score": bio_score,
+                "speed_score": speed_score,
+                "execution_time": execution_time,
+                "n_cells": len(X_train),
+                "n_batches": len(np.unique(batch_train)),
+                "fitness_weights": funcs["get_default_fitness_weights"](),
+            }
 
     except Exception as e:
-        return {
-            "combined_score": 0.1,
-            "error": f"Metric computation failed: {e}",
-        }
+        return funcs["error_result"](f"Metric computation failed: {e}")
 
 
 def _evaluate_on_split(workspace_path: str, split: str) -> Dict[str, Any]:
     """Evaluate on a specific data split."""
+    funcs = _get_functions()
     workspace = Path(workspace_path)
 
     bbknn_path = workspace / "bbknn"
     if not bbknn_path.exists():
-        return {
-            "combined_score": 0.0,
-            "error": "bbknn package not found",
-        }
+        if (workspace / "matrix.py").exists():
+            bbknn_path = workspace
+        else:
+            return funcs["error_result"]("bbknn package not found")
 
     try:
-        matrix_path = bbknn_path / "matrix.py"
-        spec_matrix = importlib.util.spec_from_file_location(
-            "bbknn.matrix", matrix_path
-        )
-        matrix_module = importlib.util.module_from_spec(spec_matrix)
-        sys.modules["bbknn.matrix"] = matrix_module
-        spec_matrix.loader.exec_module(matrix_module)
-
+        matrix_module = _load_bbknn_module(bbknn_path)
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load bbknn: {e}",
-        }
+        return funcs["error_result"](f"Failed to load bbknn: {e}")
 
-    data_dir = _get_data_dir()
+    data_dir = funcs["get_data_dir"]()
 
     try:
-        X, batch_labels, celltype_labels = load_tma_data(data_dir, split=split)
+        X, batch_labels, celltype_labels = funcs["load_tma_data"](data_dir, split=split)
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load TMA {split} data: {e}",
-        }
+        return funcs["error_result"](f"Failed to load TMA {split} data: {e}")
 
     try:
         start_time = time.time()
@@ -292,36 +347,33 @@ def _evaluate_on_split(workspace_path: str, split: str) -> Dict[str, Any]:
         X_corrected = graph_to_embedding(connectivities, n_components=30)
 
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"BBKNN execution failed: {e}",
-        }
+        return funcs["error_result"](f"BBKNN execution failed: {e}")
 
     try:
-        mixing_score = compute_batch_mixing_score(X_corrected, batch_labels)
-        bio_score = compute_bio_conservation_score(X_corrected, X, celltype_labels)
-        speed_score = 1.0 / (1 + execution_time)
+        if funcs["compute_standard_metrics"]:
+            result = funcs["compute_standard_metrics"](
+                X_corrected, X, batch_labels, celltype_labels, execution_time
+            )
+            result["dataset"] = f"tma_{split}"
+            return result
+        else:
+            mixing_score = funcs["compute_batch_mixing_score"](X_corrected, batch_labels)
+            bio_score = funcs["compute_bio_conservation_score"](X_corrected, X, celltype_labels)
+            speed_score = 1.0 / (1 + execution_time)
 
-        combined_score = (
-            0.45 * mixing_score +
-            0.45 * bio_score +
-            0.10 * speed_score
-        )
-
-        return {
-            "combined_score": combined_score,
-            "mixing_score": mixing_score,
-            "bio_conservation_score": bio_score,
-            "speed_score": speed_score,
-            "execution_time": execution_time,
-            "dataset": f"tma_{split}",
-        }
+            return {
+                "mixing_score": mixing_score,
+                "bio_conservation_score": bio_score,
+                "speed_score": speed_score,
+                "execution_time": execution_time,
+                "n_cells": len(X),
+                "n_batches": len(np.unique(batch_labels)),
+                "dataset": f"tma_{split}",
+                "fitness_weights": funcs["get_default_fitness_weights"](),
+            }
 
     except Exception as e:
-        return {
-            "combined_score": 0.1,
-            "error": f"Metric computation failed: {e}",
-        }
+        return funcs["error_result"](f"Metric computation failed: {e}")
 
 
 def evaluate_on_validation(workspace_path: str) -> Dict[str, Any]:
@@ -334,13 +386,18 @@ def evaluate_on_test(workspace_path: str) -> Dict[str, Any]:
     return _evaluate_on_split(workspace_path, "test")
 
 
-if __name__ == "__main__":
+# Only run main block when executed directly (not via exec())
+if __name__ == "__main__" and '__file__' in dir():
     workspace = os.path.dirname(os.path.abspath(__file__))
 
     print("=" * 60)
     print("BBKNN Evaluator Test (TMA Data)")
     print("=" * 60)
     print(f"Workspace: {workspace}")
+
+    # Check if shared metrics loaded
+    metrics = _load_shared_metrics()
+    print(f"Shared metrics loaded: {metrics is not None}")
 
     print("\n" + "-" * 60)
     print("TRAINING SET Evaluation:")

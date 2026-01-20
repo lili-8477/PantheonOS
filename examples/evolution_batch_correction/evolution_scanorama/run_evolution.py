@@ -34,6 +34,9 @@ load_dotenv(Path(__file__).parent / ".env")
 _example_dir = Path(__file__).parent.resolve()
 os.environ.setdefault("SCANORAMA_DATA_DIR", str(_example_dir.parent / "data"))
 
+# Set shared metrics module path so evaluator can load it via importlib
+os.environ.setdefault("METRICS_MODULE_PATH", str(_example_dir.parent / "metrics.py"))
+
 
 async def run_evolution(
     iterations: int = 50,

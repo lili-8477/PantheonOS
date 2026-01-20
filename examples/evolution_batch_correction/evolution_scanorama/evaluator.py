@@ -10,48 +10,182 @@ The combined score balances these metrics for evolution.
 """
 
 import numpy as np
-import pandas as pd
 import time
 import sys
 import os
 import importlib.util
 from pathlib import Path
-from sklearn.neighbors import NearestNeighbors
-from sklearn.metrics import silhouette_score
 from typing import Dict, Any, Tuple, List
 
 
-def _get_data_dir() -> Path:
-    """Get the shared data directory path."""
+# =============================================================================
+# Shared metrics loading via importlib
+# =============================================================================
+
+_metrics_module = None
+
+
+def _load_shared_metrics():
+    """
+    Load shared metrics module via environment variable.
+
+    Returns the module if successful, None otherwise.
+    """
+    global _metrics_module
+    if _metrics_module is not None:
+        return _metrics_module
+
+    metrics_path = os.environ.get("METRICS_MODULE_PATH")
+    if metrics_path and Path(metrics_path).exists():
+        try:
+            spec = importlib.util.spec_from_file_location("shared_metrics", metrics_path)
+            metrics = importlib.util.module_from_spec(spec)
+            sys.modules["shared_metrics"] = metrics
+            spec.loader.exec_module(metrics)
+            _metrics_module = metrics
+            return metrics
+        except Exception:
+            pass
+    return None
+
+
+# =============================================================================
+# Fallback implementations (used if shared metrics cannot be loaded)
+# =============================================================================
+
+def _get_data_dir_fallback() -> Path:
+    """Fallback: Get the shared data directory path."""
     env_data_dir = os.environ.get("SCANORAMA_DATA_DIR")
     if env_data_dir:
         return Path(env_data_dir)
-    return Path(__file__).parent.parent / "data"
+
+    absolute_path = Path("/Users/wzxu/Projects/Pantheon/pantheon-agents/examples/evolution_batch_correction/data")
+    if absolute_path.exists():
+        return absolute_path
+
+    try:
+        relative_path = Path(__file__).parent.parent / "data"
+        if relative_path.exists():
+            return relative_path
+    except NameError:
+        pass
+
+    return absolute_path
 
 
-def load_tma_data(
+def _load_tma_data_fallback(
     data_dir: Path,
     split: str = "train",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Load TMA data with real cell type labels.
-
-    Args:
-        data_dir: Directory containing the data files
-        split: Which split to load ("train", "val", or "test")
-
-    Returns:
-        X: Features (n_cells x 30)
-        batch_labels: Batch labels (donor)
-        celltype_labels: True cell type labels
-    """
+    """Fallback: Load TMA data with real cell type labels."""
+    import pandas as pd
     df = pd.read_csv(data_dir / f"tma_8000_{split}.csv")
-    X = df.iloc[:, :30].values  # PC1-PC30
+    X = df.iloc[:, :30].values
     batch_labels = df["donor"].values
     celltype_labels = df["celltype"].values
-
     return X, batch_labels, celltype_labels
 
+
+def _compute_batch_mixing_score_fallback(
+    X: np.ndarray,
+    batch_labels: np.ndarray,
+    k: int = 50,
+) -> float:
+    """Fallback: Compute batch mixing score using k-nearest neighbors."""
+    from sklearn.neighbors import NearestNeighbors
+
+    n_cells = X.shape[0]
+    unique_batches = np.unique(batch_labels)
+
+    expected_props = np.array([
+        np.sum(batch_labels == b) / n_cells
+        for b in unique_batches
+    ])
+
+    nn = NearestNeighbors(n_neighbors=min(k + 1, n_cells), algorithm="auto")
+    nn.fit(X)
+    _, indices = nn.kneighbors(X)
+
+    mixing_scores = []
+    for i in range(n_cells):
+        neighbor_batches = batch_labels[indices[i, 1:]]
+        observed_props = np.array([
+            np.sum(neighbor_batches == b) / k
+            for b in unique_batches
+        ])
+        score = 1 - np.sqrt(np.mean((observed_props - expected_props) ** 2))
+        mixing_scores.append(max(0, score))
+
+    return np.mean(mixing_scores)
+
+
+def _compute_bio_conservation_score_fallback(
+    X_corrected: np.ndarray,
+    X_original: np.ndarray,
+    true_labels: np.ndarray,
+) -> float:
+    """Fallback: Compute biological structure conservation score."""
+    from sklearn.metrics import silhouette_score
+    try:
+        if len(np.unique(true_labels)) > 1:
+            silhouette = silhouette_score(X_corrected, true_labels)
+            return (silhouette + 1) / 2
+        else:
+            return 0.5
+    except Exception:
+        return 0.5
+
+
+def _get_default_fitness_weights_fallback() -> Dict[str, float]:
+    """Fallback: Get default fitness weights."""
+    return {
+        "mixing_score": 0.45,
+        "bio_conservation_score": 0.45,
+        "speed_score": 0.10,
+    }
+
+
+def _error_result_fallback(message: str) -> Dict[str, Any]:
+    """Fallback: Create standard error result."""
+    return {
+        "function_score": 0.0,
+        "error": message,
+    }
+
+
+# =============================================================================
+# Get functions (use shared metrics if available, fallback otherwise)
+# =============================================================================
+
+def _get_functions():
+    """Get metric functions, preferring shared module if available."""
+    metrics = _load_shared_metrics()
+
+    if metrics:
+        return {
+            "load_tma_data": metrics.load_tma_data,
+            "get_data_dir": lambda: metrics.get_data_dir("SCANORAMA_DATA_DIR"),
+            "compute_batch_mixing_score": metrics.compute_batch_mixing_score,
+            "compute_bio_conservation_score": metrics.compute_bio_conservation_score,
+            "get_default_fitness_weights": lambda: metrics.get_default_fitness_weights(include_convergence=False),
+            "error_result": metrics.error_result,
+            "compute_standard_metrics": metrics.compute_standard_metrics,
+        }
+    else:
+        return {
+            "load_tma_data": _load_tma_data_fallback,
+            "get_data_dir": _get_data_dir_fallback,
+            "compute_batch_mixing_score": _compute_batch_mixing_score_fallback,
+            "compute_bio_conservation_score": _compute_bio_conservation_score_fallback,
+            "get_default_fitness_weights": _get_default_fitness_weights_fallback,
+            "error_result": _error_result_fallback,
+            "compute_standard_metrics": None,  # Use manual computation
+        }
+
+
+# =============================================================================
+# Scanorama-specific functions
+# =============================================================================
 
 def split_by_batch(
     X: np.ndarray,
@@ -111,85 +245,28 @@ def reconstruct_from_batches(
     return X_corrected
 
 
-def compute_batch_mixing_score(
-    X: np.ndarray,
-    batch_labels: np.ndarray,
-    k: int = 50,
-) -> float:
-    """
-    Compute batch mixing score using k-nearest neighbors.
+def _load_scanorama_module(scanorama_path: Path):
+    """Load the scanorama module from workspace."""
+    # Import utils first
+    utils_path = scanorama_path / "utils.py"
+    spec_utils = importlib.util.spec_from_file_location("scanorama.utils", utils_path)
+    utils_module = importlib.util.module_from_spec(spec_utils)
+    sys.modules["scanorama.utils"] = utils_module
+    spec_utils.loader.exec_module(utils_module)
 
-    Measures how well different batches are mixed in the embedding.
-    Higher score = better mixing.
+    # Import main scanorama module
+    main_path = scanorama_path / "scanorama.py"
+    spec = importlib.util.spec_from_file_location("scanorama.scanorama", main_path)
+    scanorama_module = importlib.util.module_from_spec(spec)
+    sys.modules["scanorama.scanorama"] = scanorama_module
+    spec.loader.exec_module(scanorama_module)
 
-    Args:
-        X: Embedding (n_cells x n_features)
-        batch_labels: Batch assignments
-        k: Number of neighbors
-
-    Returns:
-        Mixing score in [0, 1]
-    """
-    n_cells = X.shape[0]
-    unique_batches = np.unique(batch_labels)
-
-    # Expected proportion of each batch
-    expected_props = np.array([
-        np.sum(batch_labels == b) / n_cells
-        for b in unique_batches
-    ])
-
-    # Find k nearest neighbors
-    nn = NearestNeighbors(n_neighbors=min(k + 1, n_cells), algorithm="auto")
-    nn.fit(X)
-    _, indices = nn.kneighbors(X)
-
-    # For each cell, compute batch proportions in neighborhood
-    mixing_scores = []
-    for i in range(n_cells):
-        neighbor_batches = batch_labels[indices[i, 1:]]  # Exclude self
-        observed_props = np.array([
-            np.sum(neighbor_batches == b) / k
-            for b in unique_batches
-        ])
-
-        # Compare to expected (lower deviation = better mixing)
-        score = 1 - np.sqrt(np.mean((observed_props - expected_props) ** 2))
-        mixing_scores.append(max(0, score))
-
-    return np.mean(mixing_scores)
+    return scanorama_module
 
 
-def compute_bio_conservation_score(
-    X_corrected: np.ndarray,
-    X_original: np.ndarray,
-    true_labels: np.ndarray,
-) -> float:
-    """
-    Compute biological structure conservation score using silhouette score.
-
-    Measures how well the biological clusters are separated after correction.
-    Higher silhouette = better separation of cell types.
-
-    Args:
-        X_corrected: Corrected embedding
-        X_original: Original embedding (unused, kept for API compatibility)
-        true_labels: True biological labels (cell types)
-
-    Returns:
-        Silhouette score normalized to [0, 1]
-    """
-    try:
-        if len(np.unique(true_labels)) > 1:
-            # Compute silhouette score on corrected data
-            silhouette = silhouette_score(X_corrected, true_labels)
-            # Normalize from [-1, 1] to [0, 1]
-            return (silhouette + 1) / 2
-        else:
-            return 0.5
-    except Exception:
-        return 0.5
-
+# =============================================================================
+# Main evaluation function
+# =============================================================================
 
 def evaluate(workspace_path: str) -> Dict[str, Any]:
     """
@@ -202,52 +279,28 @@ def evaluate(workspace_path: str) -> Dict[str, Any]:
         workspace_path: Path to the workspace containing scanorama package
 
     Returns:
-        Dictionary with metrics including 'combined_score'
+        Dictionary with metrics and fitness_weights
     """
+    funcs = _get_functions()
     workspace = Path(workspace_path)
 
-    # Add workspace to path so we can import scanorama
+    # Load the scanorama module from workspace
     scanorama_path = workspace / "scanorama"
     if not scanorama_path.exists():
-        return {
-            "combined_score": 0.0,
-            "error": "scanorama package not found",
-        }
+        return funcs["error_result"]("scanorama package not found")
 
-    # Load the scanorama module from workspace
     try:
-        # Import utils first
-        utils_path = scanorama_path / "utils.py"
-        spec_utils = importlib.util.spec_from_file_location("scanorama.utils", utils_path)
-        utils_module = importlib.util.module_from_spec(spec_utils)
-        sys.modules["scanorama.utils"] = utils_module
-        spec_utils.loader.exec_module(utils_module)
-
-        # Import main scanorama module
-        main_path = scanorama_path / "scanorama.py"
-        spec = importlib.util.spec_from_file_location("scanorama.scanorama", main_path)
-        scanorama_module = importlib.util.module_from_spec(spec)
-        sys.modules["scanorama.scanorama"] = scanorama_module
-        spec.loader.exec_module(scanorama_module)
-
+        scanorama_module = _load_scanorama_module(scanorama_path)
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load scanorama: {e}",
-        }
+        return funcs["error_result"](f"Failed to load scanorama: {e}")
 
     # Load TMA training data with real cell type labels
-    data_dir = _get_data_dir()
+    data_dir = funcs["get_data_dir"]()
 
     try:
-        X_train, batch_train, celltype_train = load_tma_data(data_dir, split="train")
+        X_train, batch_train, celltype_train = funcs["load_tma_data"](data_dir, split="train")
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load TMA data: {e}",
-        }
-
-    n_cells = len(X_train)
+        return funcs["error_result"](f"Failed to load TMA data: {e}")
 
     # Split data by batch for scanorama input
     datasets, batch_names, original_order = split_by_batch(X_train, batch_train)
@@ -282,55 +335,43 @@ def evaluate(workspace_path: str) -> Dict[str, Any]:
         X_corrected = reconstruct_from_batches(datasets_corrected, original_order)
 
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Scanorama execution failed: {e}",
-        }
+        return funcs["error_result"](f"Scanorama execution failed: {e}")
 
     # Correctness check: verify that the algorithm actually corrected the data
     correction_magnitude = np.abs(X_train - X_corrected).mean()
     if correction_magnitude < 0.01:
-        return {
-            "combined_score": 0.0,
-            "correction_magnitude": correction_magnitude,
-            "error": "No meaningful correction applied (data unchanged)",
-        }
+        result = funcs["error_result"]("No meaningful correction applied (data unchanged)")
+        result["correction_magnitude"] = correction_magnitude
+        return result
 
     # Compute metrics on training data using real cell type labels
     try:
-        # Batch mixing (higher = better, weight: 0.45)
-        mixing_score = compute_batch_mixing_score(X_corrected, batch_train)
+        if funcs["compute_standard_metrics"]:
+            # Use shared compute_standard_metrics
+            result = funcs["compute_standard_metrics"](
+                X_corrected, X_train, batch_train, celltype_train, execution_time
+            )
+            result["correction_magnitude"] = correction_magnitude
+            return result
+        else:
+            # Manual computation using fallback functions
+            mixing_score = funcs["compute_batch_mixing_score"](X_corrected, batch_train)
+            bio_score = funcs["compute_bio_conservation_score"](X_corrected, X_train, celltype_train)
+            speed_score = 1.0 / (1 + execution_time)
 
-        # Biological conservation using REAL cell type labels (weight: 0.45)
-        bio_score = compute_bio_conservation_score(X_corrected, X_train, celltype_train)
-
-        # Speed score (faster = better, weight: 0.1)
-        speed_score = 1.0 / (1 + execution_time)
-
-        # Combined score
-        combined_score = (
-            0.45 * mixing_score +
-            0.45 * bio_score +
-            0.10 * speed_score
-        )
-
-        return {
-            "combined_score": combined_score,
-            "mixing_score": mixing_score,
-            "bio_conservation_score": bio_score,
-            "speed_score": speed_score,
-            "correction_magnitude": correction_magnitude,
-            "execution_time": execution_time,
-            "n_cells": n_cells,
-            "n_batches": len(datasets),
-            "dataset": "tma_train",
-        }
+            return {
+                "mixing_score": mixing_score,
+                "bio_conservation_score": bio_score,
+                "speed_score": speed_score,
+                "correction_magnitude": correction_magnitude,
+                "execution_time": execution_time,
+                "n_cells": len(X_train),
+                "n_batches": len(datasets),
+                "fitness_weights": funcs["get_default_fitness_weights"](),
+            }
 
     except Exception as e:
-        return {
-            "combined_score": 0.1,  # Partial credit for running
-            "error": f"Metric computation failed: {e}",
-        }
+        return funcs["error_result"](f"Metric computation failed: {e}")
 
 
 def _evaluate_on_split(workspace_path: str, split: str) -> Dict[str, Any]:
@@ -344,50 +385,26 @@ def _evaluate_on_split(workspace_path: str, split: str) -> Dict[str, Any]:
     Returns:
         Dictionary with metrics
     """
+    funcs = _get_functions()
     workspace = Path(workspace_path)
 
-    # Add workspace to path so we can import scanorama
+    # Load the scanorama module from workspace
     scanorama_path = workspace / "scanorama"
     if not scanorama_path.exists():
-        return {
-            "combined_score": 0.0,
-            "error": "scanorama package not found",
-        }
+        return funcs["error_result"]("scanorama package not found")
 
-    # Load the scanorama module from workspace
     try:
-        # Import utils first
-        utils_path = scanorama_path / "utils.py"
-        spec_utils = importlib.util.spec_from_file_location("scanorama.utils", utils_path)
-        utils_module = importlib.util.module_from_spec(spec_utils)
-        sys.modules["scanorama.utils"] = utils_module
-        spec_utils.loader.exec_module(utils_module)
-
-        # Import main scanorama module
-        main_path = scanorama_path / "scanorama.py"
-        spec = importlib.util.spec_from_file_location("scanorama.scanorama", main_path)
-        scanorama_module = importlib.util.module_from_spec(spec)
-        sys.modules["scanorama.scanorama"] = scanorama_module
-        spec.loader.exec_module(scanorama_module)
-
+        scanorama_module = _load_scanorama_module(scanorama_path)
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load scanorama: {e}",
-        }
+        return funcs["error_result"](f"Failed to load scanorama: {e}")
 
     # Load TMA data
-    data_dir = _get_data_dir()
+    data_dir = funcs["get_data_dir"]()
 
     try:
-        X, batch_labels, celltype_labels = load_tma_data(data_dir, split=split)
+        X, batch_labels, celltype_labels = funcs["load_tma_data"](data_dir, split=split)
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Failed to load TMA {split} data: {e}",
-        }
-
-    n_cells = len(X)
+        return funcs["error_result"](f"Failed to load TMA {split} data: {e}")
 
     # Split data by batch
     datasets, batch_names, original_order = split_by_batch(X, batch_labels)
@@ -414,39 +431,34 @@ def _evaluate_on_split(workspace_path: str, split: str) -> Dict[str, Any]:
         X_corrected = reconstruct_from_batches(datasets_corrected, original_order)
 
     except Exception as e:
-        return {
-            "combined_score": 0.0,
-            "error": f"Scanorama execution failed: {e}",
-        }
+        return funcs["error_result"](f"Scanorama execution failed: {e}")
 
     # Compute metrics
     try:
-        mixing_score = compute_batch_mixing_score(X_corrected, batch_labels)
-        bio_score = compute_bio_conservation_score(X_corrected, X, celltype_labels)
-        speed_score = 1.0 / (1 + execution_time)
+        if funcs["compute_standard_metrics"]:
+            result = funcs["compute_standard_metrics"](
+                X_corrected, X, batch_labels, celltype_labels, execution_time
+            )
+            result["dataset"] = f"tma_{split}"
+            return result
+        else:
+            mixing_score = funcs["compute_batch_mixing_score"](X_corrected, batch_labels)
+            bio_score = funcs["compute_bio_conservation_score"](X_corrected, X, celltype_labels)
+            speed_score = 1.0 / (1 + execution_time)
 
-        combined_score = (
-            0.45 * mixing_score +
-            0.45 * bio_score +
-            0.10 * speed_score
-        )
-
-        return {
-            "combined_score": combined_score,
-            "mixing_score": mixing_score,
-            "bio_conservation_score": bio_score,
-            "speed_score": speed_score,
-            "execution_time": execution_time,
-            "n_cells": n_cells,
-            "n_batches": len(datasets),
-            "dataset": f"tma_{split}",
-        }
+            return {
+                "mixing_score": mixing_score,
+                "bio_conservation_score": bio_score,
+                "speed_score": speed_score,
+                "execution_time": execution_time,
+                "n_cells": len(X),
+                "n_batches": len(datasets),
+                "dataset": f"tma_{split}",
+                "fitness_weights": funcs["get_default_fitness_weights"](),
+            }
 
     except Exception as e:
-        return {
-            "combined_score": 0.1,
-            "error": f"Metric computation failed: {e}",
-        }
+        return funcs["error_result"](f"Metric computation failed: {e}")
 
 
 def evaluate_on_validation(workspace_path: str) -> Dict[str, Any]:
@@ -459,8 +471,8 @@ def evaluate_on_test(workspace_path: str) -> Dict[str, Any]:
     return _evaluate_on_split(workspace_path, "test")
 
 
-if __name__ == "__main__":
-    # Use current directory as workspace
+# Only run main block when executed directly (not via exec())
+if __name__ == "__main__" and '__file__' in dir():
     workspace = os.path.dirname(os.path.abspath(__file__))
 
     print("=" * 60)
@@ -468,7 +480,10 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"Workspace: {workspace}")
 
-    # Training set evaluation
+    # Check if shared metrics loaded
+    metrics = _load_shared_metrics()
+    print(f"Shared metrics loaded: {metrics is not None}")
+
     print("\n" + "-" * 60)
     print("TRAINING SET Evaluation:")
     print("-" * 60)
