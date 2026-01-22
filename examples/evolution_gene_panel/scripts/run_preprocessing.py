@@ -334,6 +334,13 @@ def main(downsample_cell_number: int = None):
         adata = adata[adata.obs['tissue'] == TISSUE].copy()
     print(f"After tissue filter: {adata.n_obs} cells x {adata.n_vars} genes")
 
+    # Remove genes with zero expression
+    sc.pp.filter_genes(adata, min_cells=1)
+    print(f"After gene filter: {adata.n_obs} cells x {adata.n_vars} genes")
+    # Remove cells with zero expression
+    sc.pp.filter_cells(adata, min_genes=1)
+    print(f"After cell filter: {adata.n_obs} cells x {adata.n_vars} genes")
+
     # -------------------------------------------------------------------------
     # Step 2b: Downsample cells if requested
     # -------------------------------------------------------------------------

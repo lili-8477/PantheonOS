@@ -92,9 +92,19 @@ def _evaluate_panel_metrics(adata, genes: list, label_key: str = "cell_type") ->
     ad = adata[:, genes].copy()
 
     n_pcs = min(50, panel_size - 1, ad.n_obs - 1)
-    sc.pp.pca(ad, n_comps=n_pcs)
-    sc.pp.neighbors(ad, n_neighbors=15, use_rep="X_pca")
-    sc.tl.leiden(ad, resolution=0.8, random_state=0)
+    try:
+        import rapids_singlecell as rsc
+        _USE_GPU = True
+    except ImportError:
+        _USE_GPU = False
+    if _USE_GPU:
+        rsc.pp.pca(ad, n_comps=n_pcs)
+        rsc.pp.neighbors(ad, n_neighbors=15, use_rep="X_pca")
+        rsc.tl.leiden(ad, resolution=0.8, random_state=0)
+    else:
+        sc.pp.pca(ad, n_comps=n_pcs)
+        sc.pp.neighbors(ad, n_neighbors=15, use_rep="X_pca")
+        sc.tl.leiden(ad, resolution=0.8, random_state=0)
 
     clusters = ad.obs["leiden"]
     true = ad.obs[label_key]
