@@ -207,6 +207,22 @@ Think like a performance engineer. The algorithm is sound; your job is to make t
 """
 
 
+# Python analysis capability section (optional, added when analyzer_use_python=True)
+ANALYZER_PYTHON_SECTION = """
+## Python Analysis Capability
+
+You have access to a Python interpreter via the `run_python_code` tool.
+
+Use it when you need to:
+- Load and inspect data or models
+- Run experiments to validate hypotheses
+- Gather quantitative metrics to inform your recommendations
+- Compare outputs or analyze patterns
+
+Provide concrete, data-driven recommendations based on your analysis.
+"""
+
+
 # Summarizer prompt for extracting exploration directions
 SUMMARIZER_SYSTEM_PROMPT = """You are a technical summarizer. Your job is to identify which optimization direction was ACTUALLY IMPLEMENTED in code changes.
 
@@ -342,6 +358,7 @@ class EvolutionPromptBuilder:
         initial_prob: float = 0.9,
         final_prob: float = 0.1,
         decay_generations: int = 10,
+        use_python: bool = False,
     ) -> Tuple[str, str, float]:
         """
         Get analyzer system prompt with generation-appropriate optimization direction.
@@ -355,6 +372,7 @@ class EvolutionPromptBuilder:
             initial_prob: Initial exploration probability (at generation 0)
             final_prob: Final exploration probability (asymptotic)
             decay_generations: Generations to decay to near-final probability
+            use_python: Whether to include Python analysis capability section
 
         Returns:
             Tuple of (full_prompt, direction, exploration_probability) where:
@@ -377,6 +395,10 @@ class EvolutionPromptBuilder:
         )
 
         full_prompt = ANALYZER_SYSTEM_PROMPT + "\n" + direction_section
+
+        # Add Python analysis section if enabled
+        if use_python:
+            full_prompt = full_prompt + "\n" + ANALYZER_PYTHON_SECTION
 
         return full_prompt, direction, exploration_prob
 

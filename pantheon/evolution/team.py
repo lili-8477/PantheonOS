@@ -163,6 +163,7 @@ class EvolutionTeam:
         self._evaluator = evaluator
         self._analyzer = analyzer
         self._critic = critic
+        self._python_toolset = None  # Python interpreter for analyzer (lazy-initialized)
 
         # State
         self.objective: str = ""
@@ -190,7 +191,7 @@ class EvolutionTeam:
                 raise RuntimeError("Pantheon Agent not available for mutation")
         return self._mutator
 
-    def _create_analyzer(self, generation: int):
+    async def _create_analyzer(self, generation: int):
         """
         Create analyzer agent with generation-appropriate system prompt.
 
@@ -201,6 +202,8 @@ class EvolutionTeam:
 
         If user provided a custom analyzer at init time, returns that instead
         (with direction="custom" and probability=0.0).
+
+        Optionally includes Python interpreter capability when config.analyzer_use_python=True.
 
         Args:
             generation: Current program generation for adaptive prompt selection
@@ -214,21 +217,34 @@ class EvolutionTeam:
 
         from pantheon.agent import Agent
 
-        # Get adaptive system prompt based on generation
+        # Get adaptive system prompt based on generation (with Python section if enabled)
         system_prompt, direction, exploration_prob = self.prompt_builder.get_analyzer_system_prompt(
             generation=generation,
             initial_prob=self.config.analyzer_exploration_initial,
             final_prob=self.config.analyzer_exploration_final,
             decay_generations=self.config.analyzer_exploration_decay_generations,
+            use_python=self.config.analyzer_use_python,
         )
 
         analyzer = Agent(
             name="code-analyzer",
             instructions=system_prompt,
             model=self.config.analyzer_model,
-            tools=[think],  # Add thinking tool for deeper reasoning
+            tools=[think],
             use_memory=False,  # Prevent context accumulation across iterations
         )
+
+        # Add Python interpreter toolset if enabled
+        if self.config.analyzer_use_python:
+            if self._python_toolset is None:
+                from pantheon.toolsets.python import PythonInterpreterToolSet
+
+                workdir = self.config.analyzer_python_workdir or self.config.workspace_path
+                self._python_toolset = PythonInterpreterToolSet(
+                    name="analyzer-python",
+                    workdir=workdir,
+                )
+            await analyzer.toolset(self._python_toolset)
 
         return analyzer, direction, exploration_prob
 
@@ -861,7 +877,7 @@ class EvolutionTeam:
             analysis_start = time.time()
             try:
                 # Create analyzer with generation-adaptive prompt
-                analyzer, analyzer_direction, exploration_prob = self._create_analyzer(
+                analyzer, analyzer_direction, exploration_prob = await self._create_analyzer(
                     generation=parent.generation
                 )
 

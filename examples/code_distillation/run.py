@@ -48,13 +48,13 @@ async def run_evolution(
 
     config = EvolutionConfig(
         max_iterations=iterations,
-        num_workers=4,
+        num_workers=8,
         num_islands=2,
         num_inspirations=2,
         num_top_programs=3,
         max_parallel_evaluations=2,
         evaluation_timeout=120,
-        analyzer_timeout=120,
+        analyzer_timeout=180,  # Longer timeout for Python analysis
         feature_dimensions=["fidelity"],
         early_stop_generations=50,
         function_weight=1.0,
@@ -62,45 +62,40 @@ async def run_evolution(
         log_level="INFO",
         checkpoint_interval=10,
         db_path=str(output_path),
+        # Enable Python interpreter for analyzer to inspect model weights
+        analyzer_use_python=True,
+        analyzer_python_workdir=str(example_dir),
     )
 
     # Optimization objective
-    objective = """Improve the distilled classifier to match CellTypist predictions.
+    objective = """Distill the CellTypist classifier into interpretable Python code.
 
-## Current Status
-- The code already has scoring formulas for 10 cell types
-- Current fidelity is shown in evaluation metrics
-- Goal: increase fidelity to >= 95%
+## Goal
+Maximize fidelity (agreement rate with CellTypist model). Target: >= 95%
 
-## Cell Types in Test Data (EXACT NAMES - must match exactly):
-1. Plasma cells (202) - markers: JCHAIN, MZB1, XBP1
-2. Mast cells (200) - markers: TPSAB1, CPA3, TPSB2
-3. DC1 (200) - markers: CLEC9A, XCR1, CADM1
-4. Kupffer cells (199) - markers: TIMD4, MARCO, CD163
-5. pDC (198) - markers: LILRA4, IL3RA, CLEC4C
-6. gamma-delta T cells (197) - markers: TRDC, TRGC1
-7. Endothelial cells (197) - markers: VWF, CDH5, PECAM1
-8. Follicular B cells (196) - markers: MS4A1, CD79A
-9. Alveolar macrophages (184) - markers: FABP4, MRC1
-10. Neutrophil-myeloid progenitor (182) - markers: MPO, ELANE
+## Cell Types (EXACT NAMES required):
+- Plasma cells, Mast cells, DC1, Kupffer cells, pDC
+- gamma-delta T cells, Endothelial cells, Follicular B cells
+- Alveolar macrophages, Neutrophil-myeloid progenitor
 
-## Improvement Strategies
-1. Adjust weights - the current weights (0.5) are guesses, tune them
-2. Add more marker genes per cell type
-3. Add negative markers (genes that should be LOW for a cell type)
-4. Add bias terms to shift decision boundaries
+## STRICT CONSTRAINTS (IMPORTANT!)
+The distilled code must be SELF-CONTAINED and INDEPENDENT:
+- DO NOT import celltypist or load any .pkl model files
+- DO NOT load external weight files at runtime
+- All decision logic must be hardcoded in the Python code itself
+- The code should work without any external model files
 
-## Code Pattern
-```python
-scores["Cell Type"] = bias  # e.g., -1.0
-scores["Cell Type"] += w1 * expression.get("GENE1", 0)  # positive marker
-scores["Cell Type"] -= w2 * expression.get("GENE2", 0)  # negative marker
-```
+## Hints
+- The analyzer has Python capability to run experiments and inspect the model
+- Use the analyzer to extract knowledge (weights, thresholds, feature importance)
+- Then hardcode that knowledge into simple, interpretable rules
+- Consider: marker genes, decision trees, threshold-based rules
 
-## Constraints
-- Use EXACT cell type names as shown above
-- Keep the scoring pattern (no if-else chains)
-- Return max(scores, key=scores.get)
+## Requirements
+1. Function signature: def predict_cell_type(expression: dict) -> str
+2. Return one of the exact cell type names listed above
+3. Maximize fidelity with the original model
+4. Code must be self-contained (no external model dependencies)
 """
 
     print("=" * 60)
