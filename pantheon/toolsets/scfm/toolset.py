@@ -1107,6 +1107,13 @@ class SCFMToolSet(ToolSet):
             except ImportError:
                 return None
 
+        if model_name == "tabula":
+            try:
+                from .adapters.tabula import TabulaAdapter
+                return TabulaAdapter(self._checkpoint_dir)
+            except ImportError:
+                return None
+
         return None
 
     # =========================================================================

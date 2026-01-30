@@ -87,12 +87,49 @@ Return a JSON object with this exact structure:
   "warnings": []
 }
 
-## Rules
+## CRITICAL: Model Selection Rules
+
+**Match the user's specific requirements to each model's unique differentiator and "Use when" guidance.**
+Do NOT default to any single model. Each model has a distinct strength — select based on what the user actually needs.
+
+### Disambiguation Table (confusable models)
+| User mentions...                          | Select         | NOT              |
+|-------------------------------------------|---------------|------------------|
+| multi-omics, CITE-seq, RNA+ATAC+Protein   | scmulan       | scgpt            |
+| spatial transcriptomics, niche, Visium    | nicheformer   | scgpt            |
+| ATAC-seq only, chromatin accessibility    | atacformer    | scgpt/scmulan    |
+| denoising, ambient RNA, protein-coding    | scprint       | scgpt            |
+| unsupervised clustering, label-free       | aidocell      | scgpt            |
+| cell-cell communication, multicellular    | pulsar        | scgpt            |
+| fast inference, high throughput, million+  | cellplm       | scgpt            |
+| next-token, autoregressive, generative    | tgpt          | scgpt/geneformer |
+| MLP architecture, largest scale           | cellfm        | scgpt            |
+| compact 200-dim, lightweight              | scbert        | scgpt            |
+| ontology, hierarchical cell types         | sccello       | scgpt            |
+| plant, polyploidy, Arabidopsis            | scplantllm    | scgpt/uce        |
+| text+cell alignment, NL cell queries      | langcell      | scgpt            |
+| LLM fine-tuning, cells-as-text            | cell2sentence | scgpt            |
+| gene-level (not cell), no GPU, API-based  | genept        | scgpt/geneformer |
+| chat-based, conversational annotation     | chatcell      | scgpt            |
+| Ensembl IDs, network biology, CPU-only    | geneformer    | scgpt            |
+| cross-species, zebrafish/frog/pig/macaque | uce           | scgpt/geneformer |
+| prior knowledge, gene regulatory networks | genecompass   | scgpt            |
+| perturbation, drug response               | scfoundation  | scgpt            |
+| general RNA embed/integrate, no special needs | scgpt     | -                |
+
+### Selection Priority
+1. **Unique requirement match**: If the query mentions a specific capability listed in a model's "Use when" field, select that model — even if it is ⚠️ partial-spec.
+2. **Modality/species match**: ATAC-only → atacformer. Plant → scplantllm. Multi-omics → scmulan. Non-standard species → uce.
+3. **Task-specific match**: Zero-shot annotation → sccello or chatcell. Perturbation/drug → scfoundation. Spatial → nicheformer.
+4. **General fallback**: Only select scgpt or geneformer when no specific differentiating requirement is present.
+
+### Rules
 1. Always select models from the provided model cards
 2. If uncertain about parameters (like batch_key), add a question
 3. If data profile shows incompatibility, select alternative model or add warning
 4. Generate a complete execution plan with tool calls
 5. Set confidence based on how clear the user's intent is
+6. Skill-ready status (✅ vs ⚠️) is about adapter documentation, NOT model quality — do not prefer ✅ models over ⚠️ models based on status alone
 """
 
 
@@ -258,6 +295,8 @@ def build_model_cards(
 - **Gene IDs**: {spec.gene_id_scheme.value}
 - **VRAM**: {spec.hardware.min_vram_gb}GB min
 - **CPU fallback**: {"Yes" if spec.hardware.cpu_fallback else "No"}
+- **Differentiator**: {spec.differentiator or "General-purpose"}
+- **Use when**: {spec.prefer_when or "No specific preference"}
 """
         cards.append(card)
 
@@ -301,7 +340,7 @@ def build_router_prompt(
 
     constraints = []
     if prefer_zero_shot:
-        constraints.append("Prefer zero-shot capable models when possible")
+        constraints.append("Zero-shot capability is available — but only prefer it if the user has no labeled reference data")
     if max_vram_gb:
         constraints.append(f"Max VRAM available: {max_vram_gb}GB")
     if skill_ready_only:
