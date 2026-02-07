@@ -113,6 +113,34 @@ GPU acceleration, and memory optimization.
 
 ---
 
+## Supplementary Reference: SC Best Practices
+
+For more comprehensive guidance on single-cell and spatial omics analysis, refer to
+the **SC Best Practices** skill collection, derived from the authoritative
+[Single-cell Best Practices](https://www.sc-best-practices.org) book. It covers
+the full analysis pipeline from preprocessing to reproducibility, including
+detailed workflows, method comparisons, and code examples for the scverse ecosystem.
+
+**Skill index**: [sc_best_practices/SKILL.md](./sc_best_practices/SKILL.md)
+
+**Topics covered**:
+- Introduction & raw data processing frameworks
+- Preprocessing (QC, normalization, HVG, dimensionality reduction)
+- Clustering, annotation & dataset integration
+- Trajectory analysis (pseudotime, RNA velocity, lineage tracing)
+- Differential expression & condition analysis
+- Gene regulatory networks & cell-cell communication
+- Bulk deconvolution, chromatin accessibility (scATAC-seq)
+- Spatial omics (neighborhood analysis, deconvolution, imputation)
+- Surface protein (CITE-seq), immune repertoire (TCR/BCR)
+- Multimodal integration & reproducibility
+
+When the skills above provide task-specific workflows, these supplementary
+references offer broader context, alternative methods, and detailed best practices
+to complement your analysis.
+
+---
+
 ## Using Skills
 
 1. **Before analysis**: Scan this index for relevant skills
