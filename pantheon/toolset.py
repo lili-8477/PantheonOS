@@ -377,6 +377,7 @@ class ToolSet(ABC):
             self._setup_completed = True
 
             logger.info(f"Remote Server: {getattr(self.worker, 'servers', 'N/A')}")
+
             logger.info(f"Service Name: {self.worker.service_name}")
             logger.info(f"Service ID: {self.service_id}")
             try:

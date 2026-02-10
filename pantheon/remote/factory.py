@@ -12,9 +12,11 @@ def resolve_backend_config(
 ):
     """Resolve backend configuration with clear precedence: explicit > env > settings > defaults"""
     # Try to get config from Settings (lazy import to avoid circular imports)
+    # Use mode='safe' to respect dynamically set environment variables (e.g., from --auto-start-nats)
+    # This ensures .env file acts as a default fallback, not an override
     try:
         from pantheon.settings import get_settings
-        settings = get_settings()
+        settings = get_settings(mode='safe')
         remote_config = settings.get_remote_config()
     except Exception:
         remote_config = {}
