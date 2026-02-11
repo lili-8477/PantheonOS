@@ -39,11 +39,22 @@ class FileTransferToolSet(FileManagerToolSetBase):
             return {"success": False, "error": str(e)}
 
     @tool
-    async def write_chunk(self, handle_id: str, data: bytes):
-        """Write a chunk to a file."""
+    async def write_chunk(self, handle_id: str, data):
+        """Write a chunk to a file.
+
+        Args:
+            handle_id: File handle ID from open_file_for_write.
+            data: Binary data as bytes (from cloudpickle) or
+                  base64-encoded string (from JSON/frontend clients).
+        """
         if handle_id not in self._handles:
             return {"success": False, "error": "Handle not found"}
         handle = self._handles[handle_id]
+        # Frontend JSON clients send base64-encoded strings
+        if isinstance(data, str):
+            data = base64.b64decode(data)
+        elif not isinstance(data, (bytes, bytearray)):
+            return {"success": False, "error": f"Unsupported data type: {type(data).__name__}"}
         handle.write(data)
         return {"success": True}
 
