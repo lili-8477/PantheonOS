@@ -56,7 +56,7 @@ async def _start_endpoint_process(
     cmd_str = " ".join(cmd)
     logger.info(f"Executing command: {cmd_str}")
 
-    with open(log_file, "w") as f:
+    with open(log_file, "w", encoding="utf-8") as f:
         # Start Endpoint in independent subprocess to avoid resource contention
         endpoint_proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -87,7 +87,7 @@ async def _start_endpoint_process(
                 f"✗ Endpoint subprocess exited with code {endpoint_proc.returncode}"
             )
             try:
-                with open(log_file, "r") as f:
+                with open(log_file, "r", encoding="utf-8") as f:
                     logs = f.read()
                     if logs:
                         logger.error(f"Endpoint subprocess logs:\n{logs}")

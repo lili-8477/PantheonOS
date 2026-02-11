@@ -547,7 +547,7 @@ class EvolutionTeam:
                 self.database = EvolutionDatabase.load(str(resume_path))
 
                 # Load evolution state
-                with open(state_file, "r") as f:
+                with open(state_file, "r", encoding="utf-8") as f:
                     state = json.load(f)
 
                 start_iteration = state.get("current_iteration", 0) + 1
@@ -905,7 +905,7 @@ class EvolutionTeam:
         }
 
         state_path = Path(path) / "evolution_state.json"
-        with open(state_path, "w") as f:
+        with open(state_path, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
 
         logger.info(f"Checkpoint saved: iteration {iteration}, {len(self.database.programs)} programs")

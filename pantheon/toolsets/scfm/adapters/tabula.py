@@ -244,7 +244,7 @@ class TabulaAdapter(BaseAdapter):
                     break
 
         if vocab_path.exists():
-            with open(vocab_path) as f:
+            with open(vocab_path, encoding="utf-8") as f:
                 self._vocab = json.load(f)
         else:
             self._vocab = None

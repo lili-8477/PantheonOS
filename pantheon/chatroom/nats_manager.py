@@ -208,7 +208,7 @@ class NATSManager:
             )
 
         logger.debug(f"Reading template: {self.config_template_path}")
-        template = self.config_template_path.read_text()
+        template = self.config_template_path.read_text(encoding="utf-8")
 
         # Substitute ports using regex to match only actual config lines, not comments
         # Match: line start + optional whitespace + "port: 4222" + optional comment/whitespace
@@ -252,7 +252,7 @@ class NATSManager:
 
         # Write to temporary config file
         config_file = self.work_dir / ".nats-config.conf"
-        config_file.write_text(config)
+        config_file.write_text(config, encoding="utf-8")
 
         logger.debug(f"Generated NATS config: {config_file}")
         return config_file
@@ -299,7 +299,7 @@ class NATSManager:
 
         # 5. Start subprocess
         logger.info(f"[NATS] Starting subprocess: {binary_path}")
-        with open(log_file, "w") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             self._process = await asyncio.create_subprocess_exec(
                 binary_path,
                 "-c",

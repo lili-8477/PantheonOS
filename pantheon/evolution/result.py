@@ -208,7 +208,7 @@ class EvolutionResult:
             ],
         }
 
-        with open(report_path, "w") as f:
+        with open(report_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
 
     def save_html_report(self, path: str) -> str:

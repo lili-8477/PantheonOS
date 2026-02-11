@@ -93,7 +93,7 @@ def _patch_stdio_client_errlog():
                 log_path = _get_mcp_log_path(cmd_str)
                 
                 # Open in append mode, line buffered
-                log_file = open(log_path, "a", buffering=1)
+                log_file = open(log_path, "a", buffering=1, encoding="utf-8")
                 stdio_module._mcp_log_files[cmd_str] = log_file
                 
                 # Write session separator
