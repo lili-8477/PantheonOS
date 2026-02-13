@@ -1500,5 +1500,130 @@ class FileManagerToolSet(FileManagerToolSetBase):
 
         return await self._image_gen.generate_image(prompt, abs_refs)
 
+    # =========================================================================
+    # LaTeX Compilation
+    # =========================================================================
+
+    @property
+    def _latex_output_dir(self) -> Path:
+        from pantheon.settings import get_settings
+        return get_settings().pantheon_dir / "latex"
+
+    @property
+    def _latex_semaphore(self) -> asyncio.Semaphore:
+        if not hasattr(self, "_latex_sem"):
+            self._latex_sem = asyncio.Semaphore(3)
+        return self._latex_sem
+
+    @tool
+    async def compile_latex(
+        self,
+        file_path: str,
+        compiler: str = "pdflatex",
+    ) -> dict:
+        """Compile a LaTeX (.tex) file into a PDF.
+
+        Reads the .tex file from the given path, compiles it, and saves
+        the resulting PDF to the output directory.
+
+        Args:
+            file_path: Path to the .tex file to compile (absolute or relative to workspace).
+            compiler: LaTeX compiler to use. Options: "pdflatex" (default),
+                     "tectonic", "xelatex", "lualatex".
+
+        Returns:
+            dict: {
+                "success": bool,
+                "pdf_path": str (absolute path to generated PDF, if successful),
+                "error": str (compilation error message, if failed),
+                "log": str (compiler output, if failed)
+            }
+        """
+        # Resolve file path
+        source_path = Path(file_path)
+        if not source_path.is_absolute():
+            source_path = self.path / source_path
+
+        if not source_path.exists():
+            return {"success": False, "error": f"File not found: {file_path}"}
+
+        if source_path.suffix.lower() not in ('.tex', '.latex'):
+            return {"success": False, "error": f"Not a LaTeX file: {file_path}"}
+
+        async with self._latex_semaphore:
+            with tempfile.TemporaryDirectory(prefix="latex-") as tmpdir:
+                # Copy source file to temp dir
+                tex_name = source_path.name
+                tex_tmp = os.path.join(tmpdir, tex_name)
+                shutil.copy2(str(source_path), tex_tmp)
+
+                # Also copy any sibling files that might be referenced
+                # (images, bib files, cls files, etc.)
+                for sibling in source_path.parent.iterdir():
+                    if sibling != source_path and sibling.is_file():
+                        try:
+                            shutil.copy2(str(sibling), os.path.join(tmpdir, sibling.name))
+                        except Exception:
+                            pass  # Skip files that can't be copied
+
+                # Build compilation command
+                if compiler == "tectonic":
+                    cmd = ["tectonic", tex_tmp]
+                else:
+                    # pdflatex / xelatex / lualatex
+                    cmd = [
+                        compiler,
+                        "-interaction=nonstopmode",
+                        "-output-directory",
+                        tmpdir,
+                        tex_name,
+                    ]
+
+                # Run compiler
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    cwd=tmpdir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(), timeout=60
+                    )
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    return {
+                        "success": False,
+                        "error": "Compilation timed out (60s limit).",
+                    }
+
+                # Check for output PDF
+                pdf_name = tex_name.rsplit(".", 1)[0] + ".pdf"
+                pdf_tmp = os.path.join(tmpdir, pdf_name)
+
+                if os.path.exists(pdf_tmp):
+                    # Copy PDF to output directory
+                    self._latex_output_dir.mkdir(parents=True, exist_ok=True)
+                    output_path = self._latex_output_dir / pdf_name
+                    shutil.copy2(pdf_tmp, str(output_path))
+                    return {
+                        "success": True,
+                        "pdf_path": str(output_path),
+                    }
+                else:
+                    # Compilation failed - return error info
+                    output = (stdout or b"").decode("utf-8", errors="replace")
+                    err = (stderr or b"").decode("utf-8", errors="replace")
+                    combined = f"{output}\n{err}".strip()
+                    if len(combined) > 3000:
+                        combined = combined[-3000:]
+                    return {
+                        "success": False,
+                        "error": "Compilation failed. See log for details.",
+                        "log": combined,
+                    }
+
 
 __all__ = ["FileManagerToolSet"]
