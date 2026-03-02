@@ -433,16 +433,17 @@ async def start_services(
 
         from .nats_manager import NATSManager
 
-        # Find config template (nats-ws.conf in project root)
-        # Path structure: __file__ -> start.py (chatroom/) -> pantheon/ -> pantheon-agents/ (project root)
-        package_dir = Path(__file__).parent.parent.parent
-        config_template = package_dir / "nats-ws.conf"
+        # Find config template: first check package dir (pip install), then project root (dev)
+        config_template = Path(__file__).parent / "nats-ws.conf"
+        if not config_template.exists():
+            config_template = Path(__file__).parent.parent.parent / "nats-ws.conf"
 
         if not config_template.exists():
             raise RuntimeError(
-                f"NATS config template not found: {config_template}\n"
-                f"Expected at project root: nats-ws.conf\n"
-                f"Current search path: {config_template}"
+                "NATS config template not found.\n"
+                "Searched:\n"
+                f"  - {Path(__file__).parent / 'nats-ws.conf'}\n"
+                f"  - {Path(__file__).parent.parent.parent / 'nats-ws.conf'}"
             )
 
         # Initialize NATS manager
