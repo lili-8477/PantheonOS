@@ -11,7 +11,7 @@
 
 [official-site]: https://pantheonos.stanford.edu/
 [online-app]: https://app.pantheonos.stanford.edu/
-[docs]: https://pantheonos.stanford.edu/cli/docs/intro/getting-started
+[docs]: https://pantheonos.readthedocs.io/en/latest/
 
 </div>
 
