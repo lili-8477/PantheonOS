@@ -619,8 +619,6 @@ class Repl(ReplUI):
         if self._team is None:
             self._team = await self._chatroom.get_team_for_chat(self._chat_id, save_to_memory=False)
             self._is_multi_agent = len(self._team.agents) > 1
-            # Hook background task completion → REPL message queue
-            self._setup_bg_complete_hooks()
 
         # Start ChatRoom setup in background (MCP servers, etc.)
         # This runs after UI is shown, so user sees REPL immediately
@@ -675,6 +673,8 @@ class Repl(ReplUI):
         # Initialize
         await self._setup()
         self.message_queue = asyncio.Queue()
+        # Hook bg task completion → message_queue (must be after queue creation)
+        self._setup_bg_complete_hooks()
 
         # Print greeting first (REPL shows immediately)
         await self.print_greeting()
