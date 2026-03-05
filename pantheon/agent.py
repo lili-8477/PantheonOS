@@ -573,8 +573,15 @@ class Agent:
             tool_name: str,
             tool_arguments: str,
         ) -> dict:
-            """Start any tool (including call_agent) in background without blocking.
-            Returns a task_id for tracking. Use get_background_task() to check status/results.
+            """Run a tool in the background without blocking the conversation.
+
+            USE THIS when the user asks to run something "in background", or when
+            a task is expected to take a long time (e.g. long shell commands,
+            sub-agent calls, data processing). The task runs asynchronously and
+            you will be automatically notified when it completes.
+
+            You can check progress anytime with get_background_task(task_id).
+            Example: run_in_background("run_command", '{"command": "python train.py"}')
 
             Args:
                 tool_name: Name of the tool to run in background.
@@ -611,8 +618,11 @@ class Agent:
             }
 
         async def get_background_task(task_id: str = "") -> dict:
-            """Check status of background tasks. If task_id provided, get details
-            (including result and stdout output). If omitted, list all tasks.
+            """Check status and output of background tasks.
+
+            Returns incremental stdout output, status, and result.
+            If task_id is provided, get details for that task.
+            If omitted, list all background tasks.
 
             Args:
                 task_id: ID of a specific task (e.g. 'bg_1'), or empty to list all.
