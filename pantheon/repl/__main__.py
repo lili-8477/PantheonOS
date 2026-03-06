@@ -96,7 +96,7 @@ def start(
     # Handle --resume: resolve to a chat_id before starting
     if resume is not False and resume is not None:
         from datetime import datetime as dt
-        from pantheon.memory import MemoryManager
+        from pantheon.internal.memory import MemoryManager
         mm = MemoryManager(Path(memory_dir))
         ids = mm.list_memories()
         if not ids:
