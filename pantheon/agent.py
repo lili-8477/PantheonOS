@@ -556,6 +556,9 @@ class Agent:
         self._max_tool_content_length_override = max_tool_content_length
 
         self.events_queue: asyncio.Queue = asyncio.Queue()
+        # Input queue for run_loop() — messages/notifications enter here
+        self.input_queue: asyncio.Queue = asyncio.Queue()
+        self._loop_running: bool = False
         self.force_litellm = force_litellm
         self.icon = icon
 
@@ -565,6 +568,124 @@ class Agent:
 
         # Context injectors for dynamic content injection
         self.context_injectors: list = []  # List of ContextInjector instances
+
+        # Background task support
+        from .background import BackgroundTaskManager
+
+        self._bg_manager = BackgroundTaskManager()
+        self._tool_output_buffers: dict[str, list[str]] = {}
+        self._register_bg_tools()
+
+    def _register_bg_tools(self) -> None:
+        """Register background task management tools."""
+        bg_manager = self._bg_manager
+        agent_self = self
+
+        _BG_BLOCKED_TOOLS = {
+            "run_in_background",
+            "get_background_task",
+            "cancel_background_task",
+        }
+
+        async def run_in_background(
+            tool_name: str,
+            tool_arguments: str,
+        ) -> dict:
+            """Run a tool in the background without blocking the conversation.
+
+            USE THIS when the user asks to run something "in background", or when
+            a task is expected to take a long time (e.g. long shell commands,
+            sub-agent calls, data processing). The task runs asynchronously and
+            you will be automatically notified when it completes.
+
+            You can check progress anytime with get_background_task(task_id).
+            Example: run_in_background("run_command", '{"command": "python train.py"}')
+
+            Args:
+                tool_name: Name of the tool to run in background.
+                tool_arguments: JSON string of the tool arguments.
+            """
+            if tool_name in _BG_BLOCKED_TOOLS or tool_name.startswith("transfer_to_"):
+                return {"error": f"Tool '{tool_name}' cannot be run in background."}
+
+            try:
+                args = json.loads(tool_arguments) if tool_arguments else {}
+            except json.JSONDecodeError as e:
+                return {"error": f"Invalid JSON arguments: {e}"}
+
+            from uuid import uuid4 as _uuid4
+
+            bg_tool_call_id = f"bg_call_{_uuid4()}"
+
+            coro = agent_self.call_tool(
+                tool_name, args, context_variables=None, tool_call_id=bg_tool_call_id
+            )
+
+            bg_task = bg_manager.start(
+                tool_name=tool_name,
+                tool_call_id=bg_tool_call_id,
+                args=args,
+                coro=coro,
+                source="explicit",
+            )
+
+            return {
+                "task_id": bg_task.task_id,
+                "status": "running",
+                "tool_name": tool_name,
+            }
+
+        async def get_background_task(task_id: str = "") -> dict:
+            """Check status and output of background tasks.
+
+            Returns incremental stdout output, status, and result.
+            If task_id is provided, get details for that task.
+            If omitted, list all background tasks.
+
+            Args:
+                task_id: ID of a specific task (e.g. 'bg_1'), or empty to list all.
+            """
+            if task_id:
+                task = bg_manager.get(task_id)
+                if task is None:
+                    return {"error": f"Task '{task_id}' not found."}
+                return bg_manager.to_summary(task)
+            else:
+                return {
+                    "tasks": [
+                        bg_manager.to_summary(t) for t in bg_manager.list_tasks()
+                    ]
+                }
+
+        async def cancel_background_task(task_id: str) -> dict:
+            """Cancel a running background task.
+
+            Args:
+                task_id: ID of the task to cancel (e.g. 'bg_1').
+            """
+            if bg_manager.cancel(task_id):
+                return {"task_id": task_id, "status": "cancelling"}
+            task = bg_manager.get(task_id)
+            if task is None:
+                return {"error": f"Task '{task_id}' not found."}
+            return {"error": f"Task '{task_id}' is already {task.status}."}
+
+        async def remove_background_task(task_id: str) -> dict:
+            """Remove a background task from the task list.
+
+            Cancels the task first if it is still running, then deletes it.
+
+            Args:
+                task_id: ID of the task to remove (e.g. 'bg_1').
+            """
+            if bg_manager.remove(task_id):
+                return {"task_id": task_id, "status": "removed"}
+            return {"error": f"Task '{task_id}' not found."}
+
+        self._base_functions["run_in_background"] = run_in_background
+        self._base_functions["get_background_task"] = get_background_task
+        self._base_functions["cancel_background_task"] = cancel_background_task
+        self._base_functions["remove_background_task"] = remove_background_task
 
     def _get_tool_timeout(self) -> int:
         """Get tool timeout with priority: user override > settings."""
@@ -917,6 +1038,12 @@ class Agent:
         full_context["_call_agent"] = _call_agent_wrap
         full_context["caller_models"] = self.models  # For scfm_router LLM calls
 
+        # Pre-inject output buffer for background task adoption on timeout
+        if tool_call_id is not None:
+            output_buffer: list[str] = []
+            self._tool_output_buffers[tool_call_id] = output_buffer
+            full_context["_report_output"] = lambda line, buf=output_buffer: buf.append(str(line))
+
         # Remove debug call_* variables
         for k in list(full_context.keys()):
             if k.startswith("call_"):
@@ -987,7 +1114,10 @@ class Agent:
             )
 
         # 3. Call the resolved tool
+        from .background import _bg_report
+
         source = all_tools[resolved_name]
+        _bg_report(f"[tool] Calling {resolved_name}...")
         try:
             if source == "base":
                 func = self._base_functions[resolved_name]
@@ -997,7 +1127,9 @@ class Agent:
                 provider = self.providers[source]
                 tool_name = resolved_name.split("__", 1)[1]
                 result = await provider.call_tool(tool_name, args)
+            _bg_report(f"[tool] {resolved_name} completed")
         except Exception as e:
+            _bg_report(f"[tool] {resolved_name} failed: {e}")
             logger.error(
                 f"Failed to call tool '{resolved_name}' (source: {source}): {e}"
             )
@@ -1078,12 +1210,19 @@ class Agent:
                     f"Raw arguments: {truncated}"
                 )
             else:
+                # Enable stdout capture for this tool call via contextvar
+                from .background import _bg_output_buffer
+
+                _stdout_buffer: list[str] = []
+                _token = _bg_output_buffer.set(_stdout_buffer)
+
                 call_task = asyncio.create_task(
                     self.call_tool(
                         func_name, params, context_variables, tool_call_id=tool_call_id
                     )
                 )
 
+                adopted_to_bg = False
                 try:
                     result: Any
                     while True:
@@ -1099,29 +1238,52 @@ class Agent:
                         logger.debug("Check stop when tool calling")
                         elapsed = time.time() - start_time
                         if allow_timeout and timeout is not None and elapsed > timeout:
-                            call_task.cancel()
-                            raise asyncio.TimeoutError()
+                            # Adopt into background instead of cancelling.
+                            # Merge _report_output items INTO _stdout_buffer so
+                            # post-adoption prints keep accumulating in the same list.
+                            report_buf = self._tool_output_buffers.pop(tool_call_id, [])
+                            _stdout_buffer.extend(report_buf)
+                            bg_task = self._bg_manager.adopt(
+                                tool_name=func_name,
+                                tool_call_id=tool_call_id,
+                                args=params,
+                                existing_task=call_task,
+                                output_buffer=_stdout_buffer,  # same list object
+                            )
+                            adopted_to_bg = True
+                            result = (
+                                f"Tool '{func_name}' exceeded timeout ({timeout}s) and was moved to "
+                                f"background execution. task_id='{bg_task.task_id}'. "
+                                f"Use get_background_task('{bg_task.task_id}') to check progress and results."
+                            )
+                            context_variables[tool_call_id] = result
+                            break
                         if check_stop is not None and check_stop(elapsed):
                             call_task.cancel()
                             raise StopRunning()
-                    context_variables[tool_call_id] = result
+                    if not adopted_to_bg:
+                        context_variables[tool_call_id] = result
+                        self._tool_output_buffers.pop(tool_call_id, None)
                 except StopRunning:
+                    self._tool_output_buffers.pop(tool_call_id, None)
                     raise
                 except SystemExit as e:
                     if not call_task.done():
                         call_task.cancel()
                     result = f"SystemExit: {e}"
                     context_variables[tool_call_id] = result
+                    self._tool_output_buffers.pop(tool_call_id, None)
                 except Exception as e:
                     if not call_task.done():
                         call_task.cancel()
-                        # with contextlib.suppress(Exception):
-                        #    await call_task
                     result = repr(e)
                     context_variables[tool_call_id] = result
+                    self._tool_output_buffers.pop(tool_call_id, None)
                 finally:
+                    _bg_output_buffer.reset(_token)
                     # Critical Fix: Ensure child task is cancelled if WE are cancelled
-                    if not call_task.done():
+                    # But skip if it was adopted to background
+                    if not call_task.done() and not self._bg_manager._is_adopted(call_task):
                         logger.warning(f"Cancelling orphaned tool task for {func_name}")
                         call_task.cancel()
 
@@ -1616,6 +1778,29 @@ IMPORTANT: You are operating in a restricted workspace environment.
                 history_for_llm = history + [eu_msg]  # Temporary, EU not persisted
             else:
                 history_for_llm = history
+
+            # Inject background task completion notifications (ephemeral)
+            bg_notifs = self._bg_manager.drain_notifications()
+            if bg_notifs:
+                lines = []
+                for bg_task in bg_notifs:
+                    summary = self._bg_manager.to_summary(bg_task)
+                    result_preview = str(summary.get("result", ""))[:500]
+                    lines.append(
+                        f"- task_id='{bg_task.task_id}', tool='{bg_task.tool_name}', "
+                        f"status='{bg_task.status}', result: {result_preview}"
+                    )
+                notif_msg = {
+                    "role": "user",
+                    "content": (
+                        "<EPHEMERAL_MESSAGE>\n"
+                        "[Background Task Notification] The following background tasks have completed:\n"
+                        + "\n".join(lines)
+                        + "\nPlease inform the user about these results."
+                        + "\n</EPHEMERAL_MESSAGE>"
+                    ),
+                }
+                history_for_llm = list(history_for_llm) + [notif_msg]
 
             message = await self._acompletion_with_models(
                 history_for_llm,
@@ -2124,6 +2309,120 @@ IMPORTANT: You are operating in a restricted workspace environment.
                 details=run_result,
             )
 
+    # ===== Event-Driven Loop =====
+
+    async def run_loop(
+        self,
+        process_chunk: Callable | None = None,
+        process_step_message: Callable | None = None,
+        check_stop: Callable | None = None,
+        context_variables: dict | None = None,
+        memory: "Memory | None" = None,
+        tool_timeout: int | None = None,
+        model: str | list[str] | None = None,
+        on_response: Callable | None = None,
+        on_error: Callable | None = None,
+    ) -> None:
+        """Persistent event-driven loop consuming messages from input_queue.
+
+        Blocks until stop_loop() is called or the task is cancelled.
+        Each message dequeued triggers a full agent.run() cycle.
+        Background task completions auto-enqueue notifications, so the
+        agent is automatically triggered when bg tasks finish.
+
+        Args:
+            process_chunk: Streaming chunk callback (forwarded to run()).
+            process_step_message: Step message callback (forwarded to run()).
+            check_stop: Stop check callback (forwarded to run()).
+            context_variables: Shared context variables for all runs.
+            memory: Memory instance to use.
+            tool_timeout: Tool timeout (forwarded to run()).
+            model: Model override (forwarded to run()).
+            on_response: Callback(AgentResponse) after each successful run.
+            on_error: Callback(Exception) when a run fails.
+        """
+        self._loop_running = True
+        self._bg_manager.on_complete = self._on_bg_task_complete_for_loop
+
+        try:
+            while self._loop_running:
+                msg = await self.input_queue.get()
+                if msg is None:  # Sentinel from stop_loop()
+                    self.input_queue.task_done()
+                    break
+                try:
+                    response = await self.run(
+                        msg=msg,
+                        process_chunk=process_chunk,
+                        process_step_message=process_step_message,
+                        check_stop=check_stop,
+                        context_variables=context_variables,
+                        memory=memory,
+                        tool_timeout=tool_timeout,
+                        model=model,
+                    )
+                    if on_response:
+                        await run_func(on_response, response)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"run_loop error: {e}")
+                    if on_error:
+                        try:
+                            await run_func(on_error, e)
+                        except Exception:
+                            pass
+                finally:
+                    self.input_queue.task_done()
+        finally:
+            self._loop_running = False
+            self._bg_manager.on_complete = None
+
+    def stop_loop(self):
+        """Signal run_loop() to exit after current iteration."""
+        self._loop_running = False
+        self.input_queue.put_nowait(None)  # Sentinel to unblock .get()
+
+    def _on_bg_task_complete_for_loop(self, bg_task):
+        """Push lightweight trigger to input_queue on bg task completion.
+
+        The real task data comes from drain_notifications() in _run_stream
+        (ephemeral message injection, already implemented).
+        """
+        try:
+            self.input_queue.put_nowait(
+                f"[Background task '{bg_task.task_id}' ({bg_task.tool_name}) "
+                f"completed with status: {bg_task.status}]"
+            )
+        except Exception:
+            pass
+
+    def setup_bg_notify_queue(self, queue: asyncio.Queue):
+        """Wire bg task completion to an external asyncio.Queue.
+
+        Alternative to run_loop() for frontends that manage their own
+        event loops (e.g. REPL with prompt_toolkit, ChatRoom server).
+
+        Args:
+            queue: The asyncio.Queue to push notification strings into.
+        """
+        def _on_complete(bg_task):
+            status = bg_task.status
+            result_preview = ""
+            if bg_task.result is not None:
+                result_preview = str(bg_task.result)[:200]
+            elif bg_task.error:
+                result_preview = bg_task.error[:200]
+            notif = (
+                f"[Background task '{bg_task.task_id}' ({bg_task.tool_name}) "
+                f"{status}. Result: {result_preview}]"
+            )
+            try:
+                queue.put_nowait(notif)
+            except Exception:
+                pass
+        self._bg_manager.on_complete = _on_complete
+
     # FIX: agent should not call REPL, REPL call agent instead
     async def chat(self, message: str | dict | None = None):
         """Chat with the agent with a REPL interface."""
@@ -2165,7 +2464,7 @@ async def _call_agent(
     memory: "Memory | None" = None,
 ) -> dict:
     """call agent callback to let toolset use llm agent to sample response
-    
+
     Returns:
         dict with keys:
         - success: bool
@@ -2174,6 +2473,24 @@ async def _call_agent(
         - _metadata: dict with cost info (if success)
             - current_cost: float - the cost of this nested LLM call
     """
+    from .background import _bg_report, _bg_output_buffer
+
+    # Progress callback for background context: reports each sub-agent message
+    progress_cb = None
+    if _bg_output_buffer.get() is not None:
+        async def _on_step_message(msg):
+            role = msg.get("role", "")
+            content = str(msg.get("content", "") or "")
+            if role == "assistant" and content:
+                preview = content[:300]
+                if len(content) > 300:
+                    preview += "..."
+                _bg_report(f"[agent] {preview}")
+            elif role == "tool":
+                tool_name = msg.get("name", msg.get("tool_call_id", "tool"))
+                _bg_report(f"[agent] Tool result from {tool_name}")
+        progress_cb = _on_step_message
+
     # not tested with remote mode, should work naturally with reverse call support
     try:
         # Create temporary Agent
@@ -2184,8 +2501,17 @@ async def _call_agent(
             memory=memory,
         )
 
+        _bg_report(f"[agent] Sub-agent starting (model={model or 'default'})")
+
         # Run Agent with the user query
-        result = await agent.run(messages, use_memory=False, update_memory=False)
+        result = await agent.run(
+            messages,
+            use_memory=False,
+            update_memory=False,
+            process_step_message=progress_cb,
+        )
+
+        _bg_report("[agent] Sub-agent completed")
 
         # Extract cost from the agent response
         nested_cost = 0.0
@@ -2205,6 +2531,7 @@ async def _call_agent(
         }
 
     except Exception as e:
+        _bg_report(f"[agent] Sub-agent failed: {e}")
         # log stack trace
         logger.info(f"Error in agent sampling: {e}", exc_info=True)
         return {

@@ -180,7 +180,12 @@ class UnifiedMCPGateway:
                 return False
 
             # Mount to unified endpoint with prefix
-            self._ensure_unified_mcp().mount(proxy, prefix=name)
+            # fastmcp 2.x uses 'prefix', 3.x uses 'namespace'
+            unified = self._ensure_unified_mcp()
+            try:
+                unified.mount(proxy, prefix=name)
+            except TypeError:
+                unified.mount(proxy, namespace=name)
 
             # Track metadata
             self._mounted_servers[name] = MountedServerInfo(
