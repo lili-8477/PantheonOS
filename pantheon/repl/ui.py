@@ -713,9 +713,15 @@ class ReplUI:
             try:
                 # Read-only: displaying memory path, no need to fix
                 memory = chatroom.memory_manager.get_memory(chat_id)
-                file_path = getattr(memory, "_file_path", None)
-                if file_path:
-                    self.console.print(f"[dim]• Memory:   [/dim] {Path(file_path).absolute()}")
+                storage_files = memory.storage_files
+                if storage_files:
+                    if len(storage_files) == 1:
+                        self.console.print(f"[dim]• Memory:   [/dim] {Path(storage_files[0]).absolute()}")
+                    else:
+                        # Multiple files (JSONL backend)
+                        self.console.print(f"[dim]• Memory:   [/dim] {Path(storage_files[0]).parent.absolute()}/")
+                        for f in storage_files:
+                            self.console.print(f"[dim]            [/dim] └─ {Path(f).name}")
             except Exception:
                 pass
 

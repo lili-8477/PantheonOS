@@ -16,13 +16,14 @@ from uuid import uuid4
 from funcdesc import parse_func
 from pydantic import BaseModel, create_model
 
-from .memory import Memory
 if TYPE_CHECKING:
+    from .internal.memory import Memory
     from .remote import (
         RemoteBackendFactory,
         RemoteConfig,
         RemoteWorker,
     )
+
 from .toolset import ToolSet
 from .utils.llm import (
     TimingTracker,
@@ -126,7 +127,7 @@ class AgentRunContext:
     """Runtime context information for the currently executing Agent.run call."""
 
     agent: "Agent"
-    memory: Memory | None
+    memory: "Memory | None"
     process_step_message: Callable | None
     process_chunk: Callable | None
 
@@ -502,7 +503,7 @@ class Agent:
         tools: list[Callable] | None = None,
         response_format: Any | None = None,
         use_memory: bool = True,
-        memory: Memory | None = None,
+        memory: "Memory | None" = None,
         tool_timeout: int | None = None,
         force_litellm: bool = False,
         max_tool_content_length: int | None = None,
@@ -545,7 +546,10 @@ class Agent:
 
         self.response_format = response_format
         self.use_memory = use_memory
-        self.memory = memory or Memory(str(uuid4()))
+        if memory is None:
+            from .internal.memory import Memory
+            memory = Memory(str(uuid4()))
+        self.memory = memory
 
         # Store user-specified overrides (if provided, these take priority)
         self._tool_timeout_override = tool_timeout
@@ -1873,7 +1877,7 @@ IMPORTANT: You are operating in a restricted workspace environment.
         msg: AgentInput,
         execution_context_id: str | None = None,
         context_variables: dict | None = None,
-        memory: Memory | None = None,
+        memory: "Memory | None" = None,
         use_memory: bool | None = None,
     ) -> ExecutionContext:
         """Prepare execution context based on input type.
@@ -1964,7 +1968,7 @@ IMPORTANT: You are operating in a restricted workspace environment.
         process_chunk: Callable | None = None,
         process_step_message: Callable | None = None,
         check_stop: Callable | None = None,
-        memory: Memory | None = None,
+        memory: "Memory | None" = None,
         use_memory: bool | None = None,
         update_memory: bool = True,
         tool_timeout: int | None = None,
@@ -2158,7 +2162,7 @@ async def _call_agent(
     messages: list,
     system_prompt: Optional[str],
     model: Optional[str] = None,
-    memory: Memory | None = None,
+    memory: "Memory | None" = None,
 ) -> dict:
     """call agent callback to let toolset use llm agent to sample response
     
