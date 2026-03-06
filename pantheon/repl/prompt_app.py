@@ -686,6 +686,11 @@ def create_key_bindings(app_instance: "PantheonInputApp") -> KeyBindings:
         """c in bg panel: cancel selected task."""
         app_instance.bg_panel_cancel_selected()
 
+    @kb.add("d", filter=is_bg_panel & ~is_processing)
+    def _(event):
+        """d in bg panel: delete selected task."""
+        app_instance.bg_panel_delete_selected()
+
     return kb
 
 
@@ -1338,7 +1343,7 @@ class PantheonInputApp:
             self._bg_panel_selected = 0
 
         lines = []
-        lines.append('<ansiblue>─── Background Tasks (↑↓ navigate, enter=detail, c=cancel, esc=close) ───</ansiblue>')
+        lines.append('<ansiblue>─── Background Tasks (↑↓ navigate, enter=detail, c=cancel, d=delete, esc=close) ───</ansiblue>')
 
         for i, task in enumerate(tasks):
             is_selected = (i == self._bg_panel_selected)
@@ -1472,6 +1477,33 @@ class PantheonInputApp:
                             break
             except Exception:
                 pass
+        self.app.invalidate()
+
+    def bg_panel_delete_selected(self):
+        """Delete the selected background task (cancels first if running)."""
+        tasks = self._get_all_bg_tasks()
+        if not tasks or self._bg_panel_selected >= len(tasks):
+            return
+        task = tasks[self._bg_panel_selected]
+        try:
+            team = getattr(self.repl, "_team", None)
+            if team and hasattr(team, "agents"):
+                for agent in team.agents.values():
+                    bg_mgr = getattr(agent, "_bg_manager", None)
+                    if bg_mgr and bg_mgr.get(task.task_id):
+                        bg_mgr.remove(task.task_id)
+                        break
+        except Exception:
+            pass
+        # If we were viewing detail of the deleted task, go back to list
+        if self._bg_detail_task_id == task.task_id:
+            self._bg_detail_task_id = None
+        # Adjust selection if it's now out of bounds
+        remaining = self._get_all_bg_tasks()
+        if not remaining:
+            self._bg_panel_visible = False
+        elif self._bg_panel_selected >= len(remaining):
+            self._bg_panel_selected = len(remaining) - 1
         self.app.invalidate()
 
     def set_input_text(self, text: str):

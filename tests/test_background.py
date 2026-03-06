@@ -151,6 +151,37 @@ class TestBackgroundTaskManager:
         assert manager.cancel(bg.task_id) is False
 
     @pytest.mark.asyncio
+    async def test_remove_completed(self, manager):
+        """Remove a completed task from the manager."""
+
+        async def _quick():
+            return 42
+
+        bg = manager.start("quick", "tc_r1", {}, _quick())
+        await asyncio.sleep(0.1)
+        assert bg.status == "completed"
+        assert manager.remove(bg.task_id) is True
+        assert manager.get(bg.task_id) is None
+        assert len(manager.list_tasks()) == 0
+
+    @pytest.mark.asyncio
+    async def test_remove_running_cancels_first(self, manager):
+        """Remove a running task should cancel then delete it."""
+
+        async def _long():
+            await asyncio.sleep(10)
+
+        bg = manager.start("long", "tc_r2", {}, _long())
+        assert bg.status == "running"
+        assert manager.remove(bg.task_id) is True
+        assert manager.get(bg.task_id) is None
+        await asyncio.sleep(0.1)
+
+    @pytest.mark.asyncio
+    async def test_remove_nonexistent(self, manager):
+        assert manager.remove("bg_999") is False
+
+    @pytest.mark.asyncio
     async def test_adopt(self, manager):
         """Adopt an existing asyncio.Task."""
 
@@ -568,6 +599,7 @@ class TestAgentBackgroundToolsRegistration:
         assert "run_in_background" in agent._base_functions
         assert "get_background_task" in agent._base_functions
         assert "cancel_background_task" in agent._base_functions
+        assert "remove_background_task" in agent._base_functions
 
     def test_bg_manager_exists(self):
         from pantheon.agent import Agent

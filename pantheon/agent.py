@@ -655,9 +655,22 @@ class Agent:
                 return {"error": f"Task '{task_id}' not found."}
             return {"error": f"Task '{task_id}' is already {task.status}."}
 
+        async def remove_background_task(task_id: str) -> dict:
+            """Remove a background task from the task list.
+
+            Cancels the task first if it is still running, then deletes it.
+
+            Args:
+                task_id: ID of the task to remove (e.g. 'bg_1').
+            """
+            if bg_manager.remove(task_id):
+                return {"task_id": task_id, "status": "removed"}
+            return {"error": f"Task '{task_id}' not found."}
+
         self._base_functions["run_in_background"] = run_in_background
         self._base_functions["get_background_task"] = get_background_task
         self._base_functions["cancel_background_task"] = cancel_background_task
+        self._base_functions["remove_background_task"] = remove_background_task
 
     def _get_tool_timeout(self) -> int:
         """Get tool timeout with priority: user override > settings."""

@@ -227,6 +227,16 @@ class BackgroundTaskManager:
             return True
         return False
 
+    def remove(self, task_id: str) -> bool:
+        """Remove a task from the manager. Cancels it first if still running."""
+        bg_task = self._tasks.get(task_id)
+        if bg_task is None:
+            return False
+        if bg_task.asyncio_task and not bg_task.asyncio_task.done():
+            bg_task.asyncio_task.cancel()
+        del self._tasks[task_id]
+        return True
+
     def _is_adopted(self, asyncio_task: asyncio.Task) -> bool:
         """Check if an asyncio.Task has been adopted (used by finally guard)."""
         return id(asyncio_task) in self._adopted_tasks
