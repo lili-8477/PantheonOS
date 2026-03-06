@@ -906,24 +906,25 @@ class ChatRoom(ToolSet):
             if messages is None:
                 messages = []
 
-            if filter_out_images:
-                new_messages = []
-                for message in messages:
-                    if "raw_content" in message:
-                        if isinstance(message["raw_content"], dict):
-                            if "base64_uri" in message["raw_content"]:
-                                del message["raw_content"]["base64_uri"]
-                            for _k in [
-                                "stdout",
-                                "stderr",
-                            ]:  # truncate large stdout/stderr outputs
-                                MAX_LENGTH = 10000
-                                if _k in message["raw_content"]:
-                                    message["raw_content"][_k] = message["raw_content"][
-                                        _k
-                                    ][:MAX_LENGTH]
-                    new_messages.append(message)
-                messages = new_messages
+            # Always sanitize messages for transport (NATS payload limit)
+            import json as _json
+            MAX_RAW_CONTENT_SIZE = 50000  # 50KB per raw_content
+            MAX_FIELD_LENGTH = 10000
+            for message in messages:
+                if "raw_content" in message:
+                    if isinstance(message["raw_content"], dict):
+                        if filter_out_images and "base64_uri" in message["raw_content"]:
+                            del message["raw_content"]["base64_uri"]
+                        for _k in ("stdout", "stderr"):
+                            if _k in message["raw_content"]:
+                                message["raw_content"][_k] = message["raw_content"][_k][:MAX_FIELD_LENGTH]
+                    # Drop raw_content entirely if still too large
+                    try:
+                        rc_size = len(_json.dumps(message["raw_content"], ensure_ascii=False))
+                        if rc_size > MAX_RAW_CONTENT_SIZE:
+                            del message["raw_content"]
+                    except (TypeError, ValueError):
+                        pass
             return {"success": True, "messages": messages}
         except KeyError:
             return {
