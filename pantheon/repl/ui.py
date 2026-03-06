@@ -793,6 +793,9 @@ class ReplUI:
                         continue
                     if content.strip().startswith("/"):
                         continue
+                    # Skip bg task notification triggers
+                    if "<bg_task_notification>" in content or content.startswith("[Background task '"):
+                        continue
                     # Render user input with gray background using Rich
                     self.console.print()
                     for line in content.split("\n"):
