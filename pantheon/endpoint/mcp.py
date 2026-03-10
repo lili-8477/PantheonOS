@@ -185,6 +185,7 @@ class MCPServerInstance:
     # STDIO server lifecycle (FastMCP managed)
     stdio_transport: Optional[Any] = None  # StdioTransport instance
     stdio_client: Optional[Any] = None  # FastMCP Client wrapping transport
+    stdio_log_file: Optional[Any] = None  # Log file handle for stderr redirection
 
     # HTTP server lifecycle
     http_client: Optional[Any] = None  # FastMCP Client for remote HTTP server
@@ -267,11 +268,24 @@ class MCPServerInstance:
                 if os.name == 'nt':
                     cmd = [arg.strip('"').strip("'") for arg in cmd]
 
-                # Create StdioTransport
-                # Note: fastmcp 2.14.4 doesn't support log_file parameter
-                # MCP server logs will be handled by the MCP server itself
+                # Get or create log file for this server (reuse existing mechanism)
+                log_path = _get_mcp_log_path(self.config.command)
+                log_file = open(log_path, "a", buffering=1, encoding="utf-8")
+
+                # Write session separator
+                log_file.write(f"\n{'='*60}\n")
+                log_file.write(f"Session started at {datetime.now().isoformat()}\n")
+                log_file.write(f"Command: {self.config.command}\n")
+                log_file.write(f"{'='*60}\n")
+                log_file.flush()
+
+                # Store log file reference for cleanup
+                self.stdio_log_file = log_file
+
+                # Create StdioTransport with log_file to redirect stderr
+                # This suppresses uvx dependency resolution and FastMCP startup logs
                 self.stdio_transport = StdioTransport(
-                    command=cmd[0], args=cmd[1:], env=self._prepare_env()
+                    command=cmd[0], args=cmd[1:], env=self._prepare_env(), log_file=log_file
                 )
 
                 # Create FastMCP client wrapping the transport
@@ -335,7 +349,15 @@ class MCPServerInstance:
                         self.stdio_transport = None
                         self.stdio_client = None
 
-                # Step 3: Clear any remaining client references to avoid session leaks
+                # Step 3: Close log file
+                if self.stdio_log_file:
+                    try:
+                        self.stdio_log_file.close()
+                    except Exception:
+                        pass
+                    self.stdio_log_file = None
+
+                # Step 4: Clear any remaining client references to avoid session leaks
                 if self.http_client:
                     try:
                         # FastMCP client is an async context manager

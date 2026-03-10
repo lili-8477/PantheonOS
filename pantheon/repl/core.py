@@ -6,6 +6,7 @@ import sys
 import time
 import signal
 import threading
+from typing import List, Dict, Any
 from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
@@ -1305,10 +1306,11 @@ class Repl(ReplUI):
                                     notification_data = {
                                         "message": args.get("message") or args.get("Message", ""),
                                         "paths": args.get("paths_to_review") or args.get("PathsToReview", []),
-                                        "interrupt": args.get("blocked_on_user") or args.get("BlockedOnUser", False)
+                                        "interrupt": args.get("blocked_on_user") or args.get("BlockedOnUser", False),
+                                        "questions": args.get("questions") or args.get("Questions", [])
                                     }
                                     self.notify_ui_renderer.render_notification(notification_data)
-                                    
+
                                     # Save pending approval for interactive dialog (shown after chat completes)
                                     if notification_data.get("interrupt"):
                                         self._pending_approval = notification_data
@@ -1483,60 +1485,71 @@ class Repl(ReplUI):
     
     async def _handle_pending_approval(self):
         """Handle pending user approval with interactive dialog.
-        
+
         Shows an interactive dialog for notify_user with interrupt=True,
-        allowing users to review files and approve/continue.
+        allowing users to review files and answer questions.
         """
         from prompt_toolkit.application.run_in_terminal import in_terminal
-        from .viewers.notify_dialog import (
-            InteractiveNotifyDialog,
-            NotifyAction,
-        )
-        
+        from .viewers.unified_dialog import show_unified_dialog
+
         approval_data = self._pending_approval
         self._pending_approval = None  # Clear immediately
-        
+
         if not approval_data:
             return
-        
+
         message = approval_data.get("message", "")
         paths = approval_data.get("paths", [])
-        # Note: InteractiveNotifyDialog handles path parsing robustly
-        
+        questions = approval_data.get("questions", [])
+
         try:
-            # Show interactive dialog using in_terminal to suspend REPL UI
+            # Show unified dialog using in_terminal to suspend REPL UI
             if self.prompt_app and hasattr(self.prompt_app, 'app') and self.prompt_app.app.is_running:
                 async with in_terminal():
-                    dialog = InteractiveNotifyDialog(message, paths)
-                    result = await dialog.run_async()
+                    result = await show_unified_dialog(
+                        message=message,
+                        paths=paths,
+                        questions=questions
+                    )
             else:
                 # No active prompt app, run directly
-                dialog = InteractiveNotifyDialog(message, paths)
-                result = await dialog.run_async()
-            
+                result = await show_unified_dialog(
+                    message=message,
+                    paths=paths,
+                    questions=questions
+                )
+
             # Handle result
-            if result.action == NotifyAction.APPROVE:
-                self.console.print("[green]✓ Approved[/green]")
-                # Put approval message in queue - this simulates user input
-                # and goes through the normal processing flow with all callbacks
+            if result.submitted:
+                # Format answers as user message
+                answer_text = self._format_question_answers(result.answers)
+
+                self.console.print(f"[green]✓ Submitted {len(result.answers)} answer(s)[/green]")
+
+                # Put answer message in queue - this simulates user input
                 if self.message_queue:
-                    await self.message_queue.put("Approved. Please proceed.")
+                    await self.message_queue.put(answer_text)
                 else:
-                    # Fallback: direct call (won't render properly)
+                    # Fallback: direct call
                     await self._chatroom.chat(
                         chat_id=self._chat_id,
-                        message="Approved. Please proceed.",
+                        message=answer_text,
                     )
-            elif result.action == NotifyAction.REJECT:
-                self.console.print("[yellow]→ Rejected[/yellow]")
-                if result.feedback and self.message_queue:
-                    await self.message_queue.put(f"Rejected: {result.feedback}")
-            else:  # CONTINUE PLANNING
-                # Don't send any message, just continue silently
-                pass
-        
+            else:
+                # User cancelled
+                self.console.print("[yellow]⚠ Cancelled[/yellow]")
+
         except Exception as e:
-            self.console.print(f"[red]Error in approval dialog: {e}[/red]")
+            logger.error(f"Error in pending approval dialog: {e}", exc_info=True)
+            self.console.print(f"[red]Error showing dialog: {e}[/red]")
+
+    def _format_question_answers(self, answers: List[Dict[str, Any]]) -> str:
+        """Format question answers as user message.
+
+        Uses unified user response format for consistency.
+        """
+        from .user_response import UserResponseFormatter
+        return UserResponseFormatter.format_question_answers(answers)
 
     # ===== Chat management commands =====
 

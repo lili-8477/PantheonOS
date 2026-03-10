@@ -546,7 +546,31 @@ class MemoryManager:
         self.path = Path(path)
         self.memory_store: dict[str, Memory] = {}
         self.use_jsonl = use_jsonl  # Default format for new memories
-        self.load()
+        # Don't call self.load() - use on-demand loading instead
+
+    def _load_single_memory(self, memory_id: str) -> Memory:
+        """
+        Load a single memory from disk (internal helper).
+
+        Args:
+            memory_id: The ID of the memory to load.
+
+        Returns:
+            Loaded Memory object.
+
+        Raises:
+            FileNotFoundError: If the memory file does not exist.
+            Exception: If loading fails.
+        """
+        pseudo_path = self.path / f"{memory_id}.json"
+        memory = Memory.load(str(pseudo_path), use_jsonl=self.use_jsonl)
+        memory._file_path = str(pseudo_path)
+
+        # Reset running status
+        if memory.extra_data.get("running"):
+            memory.extra_data["running"] = False
+
+        return memory
 
     def new_memory(self, name: str | None = None) -> Memory:
         """
@@ -580,7 +604,7 @@ class MemoryManager:
 
     def get_memory(self, id: str, auto_fix: bool = False) -> Memory:
         """
-        Get a memory by its ID.
+        Get a memory by its ID (with on-demand loading).
 
         Args:
             id: The ID of the memory.
@@ -597,15 +621,35 @@ class MemoryManager:
             5-10ms for read-only queries. The fix will be applied automatically
             when the memory is used for agent execution.
         """
-        if id not in self.memory_store:
+        # Check if already loaded in cache
+        if id in self.memory_store:
+            memory = self.memory_store[id]
+            if auto_fix:
+                memory.ensure_fixed()
+            return memory
+
+        # On-demand loading: load single memory file
+        if not self.path.exists():
+            raise KeyError(f"Chat '{id}' not found. Memory directory does not exist.")
+
+        try:
+            memory = self._load_single_memory(id)
+
+            # Cache it
+            self.memory_store[memory.id] = memory
+
+            # Apply fix if requested
+            if auto_fix:
+                memory.ensure_fixed()
+
+            logger.debug(f"Loaded memory on-demand: {memory.name} (id={id})")
+            return memory
+
+        except FileNotFoundError:
             raise KeyError(f"Chat '{id}' not found. It may have been deleted.")
-        memory = self.memory_store[id]
-
-        # Only fix if explicitly requested (for agent execution)
-        if auto_fix:
-            memory.ensure_fixed()
-
-        return memory
+        except Exception as e:
+            logger.error(f"Failed to load memory {id}: {e}")
+            raise KeyError(f"Failed to load chat '{id}': {e}")
 
     def delete_memory(self, id: str):
         """
@@ -640,12 +684,28 @@ class MemoryManager:
 
     def list_memories(self):
         """
-        List all the memories.
+        List all the memories (scans directory).
 
         Returns:
-            The list of the memories.
+            The list of memory IDs.
         """
-        return list(self.memory_store.keys())
+        if not self.path.exists():
+            return []
+
+        memory_ids = set()
+
+        # Scan JSONL format (.meta.json files)
+        for meta_file in self.path.glob("*.meta.json"):
+            memory_id = meta_file.stem.replace(".meta", "")
+            memory_ids.add(memory_id)
+
+        # Scan JSON format (.json files, excluding .meta.json)
+        for json_file in self.path.glob("*.json"):
+            if not json_file.name.endswith(".meta.json"):
+                memory_id = json_file.stem
+                memory_ids.add(memory_id)
+
+        return list(memory_ids)
 
     def save_one(self, memory_id: str):
         """
@@ -707,16 +767,10 @@ class MemoryManager:
                 continue
 
             try:
-                # Construct a pseudo file path for Memory.load
-                pseudo_path = self.path / f"{memory_id}.json"
-                memory = Memory.load(str(pseudo_path), use_jsonl=self.use_jsonl)
-                memory._file_path = str(pseudo_path)
+                memory = self._load_single_memory(memory_id)
                 logger.debug(f"Loaded memory (JSONL): {memory.name} from {meta_file}")
                 self.memory_store[memory.id] = memory
                 loaded_ids.add(memory.id)
-
-                if memory.extra_data.get("running"):
-                    memory.extra_data["running"] = False
             except Exception as e:
                 logger.error(f"Failed to load memory from {meta_file}: {e}")
 
@@ -731,14 +785,10 @@ class MemoryManager:
                 continue
 
             try:
-                memory = Memory.load(str(json_file), use_jsonl=self.use_jsonl)
-                memory._file_path = str(json_file)
+                memory = self._load_single_memory(memory_id)
                 logger.debug(f"Loaded memory (JSON): {memory.name} from {json_file}")
                 self.memory_store[memory.id] = memory
                 loaded_ids.add(memory.id)
-
-                if memory.extra_data.get("running"):
-                    memory.extra_data["running"] = False
             except Exception as e:
                 logger.error(f"Failed to load memory from {json_file}: {e}")
 

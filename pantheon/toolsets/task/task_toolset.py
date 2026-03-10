@@ -138,6 +138,7 @@ class TaskToolSet(ToolSet):
         message: str,
         confidence_justification: str,
         confidence_score: float,
+        questions: list[dict] = [],
     ) -> dict:
         """
         This tool is used to communicate with the user.
@@ -154,13 +155,152 @@ class TaskToolSet(ToolSet):
 
         IMPORTANT: This tool should NEVER be called in parallel with other tools. Execution control will be returned to the user once this tool is called.
 
+        STRUCTURED QUESTIONS: You can include structured questions to gather specific user input beyond simple approval.
+        Pass an empty list [] if you don't need questions. Pass a list of question dicts if you do.
+
         Args:
             paths_to_review: List of ABSOLUTE paths to files that the user should be notified about. MUST populate this if requesting review.
             blocked_on_user: Set to true if you are blocked on user approval to proceed. Set false if just notifying about completion.
             message: Required message to notify the user with, e.g to provide context or ask questions. Use GitHub Flavored Markdown (GFM) format.
             confidence_justification: Justification for the confidence score. MUST answer the 6 assessment questions with Yes/No.
             confidence_score: Agent's confidence from 0.0-1.0. MUST follow scoring rules above.
+            questions: List of structured questions (0-4 questions). Pass [] if no questions needed. Each question is a dict with:
+                - question (str): The question text to ask the user
+                - header (str): Short label for the question (max 12 chars), e.g. "Auth method", "Library"
+                - input_type (str): Type of input - "single_choice", "multiple_choice", "text_input"
+                - options (list[dict], required for choice types): List of 2-4 options, each with:
+                    - label (str): Display text for the option (1-5 words)
+                    - description (str): Explanation of what this option means
+                    - value (str): Internal value to return when selected
+                - placeholder (str, optional for text_input): Placeholder text
+                - required (bool, optional): Whether this question must be answered (default: True)
+
+        Returns:
+            {
+                "success": bool,
+                "interrupt": bool,
+                "message": str,
+                "paths": list[str],
+                "has_questions": bool,
+                "questions": list[dict]
+            }
+
+        Examples:
+            # No questions - just notification
+            questions=[]
+
+            # Single choice question
+            questions=[{
+                "question": "Which authentication method should we use?",
+                "header": "Auth method",
+                "input_type": "single_choice",
+                "options": [
+                    {"label": "JWT", "description": "JSON Web Tokens for stateless auth", "value": "jwt"},
+                    {"label": "Session", "description": "Server-side session storage", "value": "session"},
+                    {"label": "OAuth2", "description": "Third-party OAuth2 provider", "value": "oauth2"}
+                ]
+            }]
+
+            # Multiple choice question
+            questions=[{
+                "question": "Which features should we implement first?",
+                "header": "Features",
+                "input_type": "multiple_choice",
+                "options": [
+                    {"label": "Login", "description": "Basic login functionality", "value": "login"},
+                    {"label": "Registration", "description": "User registration flow", "value": "register"},
+                    {"label": "Password Reset", "description": "Forgot password feature", "value": "reset"}
+                ]
+            }]
+
+            # Text input question
+            questions=[{
+                "question": "What should we name the new API endpoint?",
+                "header": "Endpoint",
+                "input_type": "text_input",
+                "placeholder": "e.g. /api/v1/users"
+            }]
+
+            # Mixed questions
+            questions=[
+                {
+                    "question": "Which database should we use?",
+                    "header": "Database",
+                    "input_type": "single_choice",
+                    "options": [
+                        {"label": "PostgreSQL", "description": "Relational database", "value": "postgres"},
+                        {"label": "MongoDB", "description": "Document database", "value": "mongo"}
+                    ]
+                },
+                {
+                    "question": "What port should the service run on?",
+                    "header": "Port",
+                    "input_type": "text_input",
+                    "placeholder": "e.g. 8080"
+                }
+            ]
         """
+        # Validate questions if provided
+        if questions:
+            if not isinstance(questions, list):
+                return {
+                    "success": False,
+                    "error": "questions must be a list",
+                }
+
+            if len(questions) > 4:
+                return {
+                    "success": False,
+                    "error": "Maximum 4 questions allowed",
+                }
+
+            for i, q in enumerate(questions):
+                if not isinstance(q, dict):
+                    return {
+                        "success": False,
+                        "error": f"Question {i+1} must be a dict",
+                    }
+
+                # Validate required fields
+                if "question" not in q or "header" not in q or "input_type" not in q:
+                    return {
+                        "success": False,
+                        "error": f"Question {i+1} missing required fields (question, header, input_type)",
+                    }
+
+                input_type = q["input_type"]
+                if input_type not in ("single_choice", "multiple_choice", "text_input"):
+                    return {
+                        "success": False,
+                        "error": f"Question {i+1} has invalid input_type: {input_type}",
+                    }
+
+                # Validate options for choice types
+                if input_type in ("single_choice", "multiple_choice"):
+                    if "options" not in q or not isinstance(q["options"], list):
+                        return {
+                            "success": False,
+                            "error": f"Question {i+1} with {input_type} must have options list",
+                        }
+
+                    if len(q["options"]) < 2 or len(q["options"]) > 4:
+                        return {
+                            "success": False,
+                            "error": f"Question {i+1} must have 2-4 options",
+                        }
+
+                    for j, opt in enumerate(q["options"]):
+                        if not isinstance(opt, dict):
+                            return {
+                                "success": False,
+                                "error": f"Question {i+1} option {j+1} must be a dict",
+                            }
+                        if "label" not in opt or "description" not in opt or "value" not in opt:
+                            return {
+                                "success": False,
+                                "error": f"Question {i+1} option {j+1} missing required fields (label, description, value)",
+                            }
+
         self.state.on_notify_user(paths_to_review)
 
         # Persist state using context from toolset
@@ -174,6 +314,8 @@ class TaskToolSet(ToolSet):
             "interrupt": blocked_on_user,
             "message": message,
             "paths": paths_to_review,
+            "has_questions": len(questions) > 0,
+            "questions": questions,
         }
 
     def get_ephemeral_prompt(self, context_variables: dict) -> dict:
