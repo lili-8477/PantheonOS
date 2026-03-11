@@ -98,6 +98,28 @@ uv sync --extra dev --extra knowledge
 uv run pytest tests/
 ```
 
+### Using Docker
+
+[![Docker Pulls](https://img.shields.io/docker/pulls/pantheon/pantheon-agents)](https://hub.docker.com/r/pantheon/pantheon-agents)
+
+Run Pantheon in a containerized environment with everything pre-configured:
+
+```bash
+# Pull the image
+docker pull pantheon/pantheon-agents:latest
+
+# Run in standalone mode (for local use)
+docker run -it --rm \
+  -e PANTHEON_MODE=standalone \
+  -v $(pwd)/workspace:/workspace \
+  -p 8080:8080 \
+  pantheon/pantheon-agents:latest
+```
+
+After startup, copy the displayed connection URL to your browser and start using Pantheon!
+
+For detailed Docker usage, deployment modes, and configuration options, see the [Docker documentation](https://github.com/aristoteleo/PantheonOS/tree/main/pantheon-agents/docker).
+
 ## `4` [Usage](#4-usage)
 
 ### CLI Mode

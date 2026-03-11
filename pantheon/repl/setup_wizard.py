@@ -40,12 +40,23 @@ def check_and_run_setup():
 
     Called at startup before the event loop starts (sync context).
     Also checks for universal LLM_API_KEY (custom API endpoint).
+
+    Skips the wizard if:
+    - Any API key is already configured
+    - SKIP_SETUP_WIZARD environment variable is set
     """
+    # Check if user explicitly wants to skip setup
+    if os.environ.get("SKIP_SETUP_WIZARD", "").lower() in ("1", "true", "yes"):
+        return
+
+    # Check if any API key is already configured
     if os.environ.get("LLM_API_KEY", ""):
         return
     for env_var in PROVIDER_API_KEYS.values():
         if os.environ.get(env_var, ""):
             return
+
+    # No API keys found - launch wizard
     run_setup_wizard()
 
 

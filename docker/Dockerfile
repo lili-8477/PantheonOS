@@ -339,8 +339,8 @@ COPY --from=builder /app /app
 
 # Layer H — Entrypoint setup (depends on /app)
 # This must come after COPY /app because it needs the entrypoint script.
-RUN chmod +x /app/docker/docker-entrypoint.sh && \
-    cp /app/docker/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /app/docker/docker-entrypoint-dual-mode.sh && \
+    cp /app/docker/docker-entrypoint-dual-mode.sh /usr/local/bin/docker-entrypoint.sh
 
 # Set default working directory
 WORKDIR /workspace
