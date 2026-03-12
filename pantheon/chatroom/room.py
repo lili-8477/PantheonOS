@@ -1869,6 +1869,30 @@ class ChatRoom(ToolSet):
 
         return True, ""
 
+    @staticmethod
+    def _get_store_installs_path():
+        """Get path to local store installs manifest."""
+        from pathlib import Path
+        return Path.home() / ".pantheon" / "store_installs.json"
+
+    def _load_store_installs(self) -> dict:
+        """Load local store installs manifest."""
+        import json
+        path = self._get_store_installs_path()
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                return {}
+        return {}
+
+    def _save_store_installs(self, data: dict):
+        """Save local store installs manifest."""
+        import json
+        path = self._get_store_installs_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
     @tool
     async def install_store_package(self, package_id: str, version: str = None) -> dict:
         """Install a package from the Pantheon Store.
@@ -1887,7 +1911,20 @@ class ChatRoom(ToolSet):
             written = installer.install(
                 dl["type"], dl["name"], dl["content"], dl.get("files")
             )
-            # Record install if logged in
+            # Record in local manifest
+            try:
+                installs = self._load_store_installs()
+                installs[package_id] = {
+                    "name": dl["name"],
+                    "type": dl["type"],
+                    "version": dl["version"],
+                    "installed_at": datetime.now().isoformat(),
+                }
+                self._save_store_installs(installs)
+            except Exception as e:
+                logger.warning(f"Failed to save local install manifest: {e}")
+
+            # Record install on Hub if logged in
             try:
                 from pantheon.store.auth import StoreAuth
                 auth = StoreAuth()
@@ -1905,6 +1942,20 @@ class ChatRoom(ToolSet):
         except Exception as e:
             logger.error(f"Error installing store package: {e}")
             return {"success": False, "error": str(e)}
+
+    @tool
+    async def get_installed_store_packages(self) -> dict:
+        """Get locally installed store packages with their versions.
+
+        Returns:
+            dict with package_id -> {name, type, version, installed_at}
+        """
+        try:
+            installs = self._load_store_installs()
+            return {"success": True, "installs": installs}
+        except Exception as e:
+            logger.error(f"Error reading store installs: {e}")
+            return {"success": False, "installs": {}, "error": str(e)}
 
     @tool
     async def reload_settings(self) -> dict:

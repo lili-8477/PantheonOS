@@ -12,7 +12,7 @@ class PackageInstaller:
     Packages are installed to the user's ~/.pantheon/ directory structure:
       - agents/{name}.md
       - teams/{name}.md  (+ bundled agents)
-      - skills/{name}.md
+      - skills/{name}/SKILL.md  (+ bundled files)
     """
 
     def __init__(self, work_dir: Optional[Path] = None):
@@ -62,7 +62,9 @@ class PackageInstaller:
                     written.append(file_target)
 
         elif pkg_type == "skill":
-            target = self.settings.skills_dir / f"{name}.md"
+            # Always install as skills/{name}/SKILL.md directory structure
+            # to preserve the original repo layout (even for single-file skills)
+            target = self.settings.skills_dir / name / "SKILL.md"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
             written.append(target)
@@ -70,7 +72,7 @@ class PackageInstaller:
             # Write bundled skill files (for skill groups)
             if files:
                 for rel_path, file_content in files.items():
-                    # rel_path is like "skills/omics/quality_control.md"
+                    # rel_path is like "skills/{name}/subdir/file.py"
                     file_target = self.settings.pantheon_dir / rel_path
                     file_target.parent.mkdir(parents=True, exist_ok=True)
                     file_target.write_text(file_content, encoding="utf-8")
@@ -111,10 +113,20 @@ class PackageInstaller:
             # as they may be shared with other teams.
 
         elif pkg_type == "skill":
-            target = self.settings.skills_dir / f"{name}.md"
-            if target.exists():
-                target.unlink()
-                removed.append(target)
+            # Check directory format first (skills/{name}/SKILL.md)
+            dir_target = self.settings.skills_dir / name
+            if dir_target.is_dir():
+                import shutil
+                removed_files = list(dir_target.rglob("*"))
+                shutil.rmtree(dir_target)
+                removed.extend(removed_files)
+                removed.append(dir_target)
+            else:
+                # Fallback: legacy flat file format
+                flat_target = self.settings.skills_dir / f"{name}.md"
+                if flat_target.exists():
+                    flat_target.unlink()
+                    removed.append(flat_target)
 
         else:
             raise ValueError(f"Unknown package type: {pkg_type}")
