@@ -1237,7 +1237,7 @@ class Agent:
 
                         logger.debug("Check stop when tool calling")
                         elapsed = time.time() - start_time
-                        if allow_timeout and timeout is not None and elapsed > timeout:
+                        if allow_timeout and timeout is not None and elapsed >= timeout:
                             # Adopt into background instead of cancelling.
                             # Merge _report_output items INTO _stdout_buffer so
                             # post-adoption prints keep accumulating in the same list.

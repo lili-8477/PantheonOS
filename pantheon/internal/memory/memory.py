@@ -707,6 +707,23 @@ class MemoryManager:
 
         return list(memory_ids)
 
+    def load_all(self):
+        """
+        Load all memories from disk into memory_store.
+
+        This is useful for testing, migration scenarios, or when you need
+        to ensure all memories are loaded upfront instead of on-demand.
+
+        Note: In production, prefer on-demand loading via get_memory() for
+        better performance with large memory directories.
+        """
+        for memory_id in self.list_memories():
+            if memory_id not in self.memory_store:
+                try:
+                    self.get_memory(memory_id)
+                except Exception as e:
+                    logger.warning(f"Failed to load memory {memory_id}: {e}")
+
     def save_one(self, memory_id: str):
         """
         Save a single memory to the file system.

@@ -445,6 +445,7 @@ class TestMemoryManagerLoad:
         jsonl_file.touch()
 
         manager = MemoryManager(temp_dir, use_jsonl=True)
+        manager.load_all()
 
         assert len(manager.memory_store) == 2
         assert json_id in manager.memory_store
@@ -511,6 +512,7 @@ class TestMemoryManagerWorkflow:
         new_memory.add_messages([{"role": "user", "content": "New message"}])
 
         manager3 = MemoryManager(temp_dir, use_jsonl=True)
+        manager3.load_all()
         assert len(manager3.memory_store) == 2
 
 
@@ -724,5 +726,6 @@ class TestMemoryExplicitSave:
 
         # Reload and verify
         manager2 = MemoryManager(temp_dir, use_jsonl=True)
+        manager2.load_all()
         assert len(manager2.memory_store) == 2
 
