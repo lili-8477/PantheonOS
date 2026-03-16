@@ -231,6 +231,14 @@ class NATSManager:
             flags=re.MULTILINE
         )
 
+        # Also replace listen: 0.0.0.0:4222 line
+        config = re.sub(
+            r'^(\s*)listen:\s*0\.0\.0\.0:4222(\s*(?:#.*)?)?$',
+            rf'\1listen: 0.0.0.0:{self.tcp_port}\2',
+            config,
+            flags=re.MULTILINE
+        )
+
         # WebSocket port - match only the websocket section
         config = re.sub(
             r'^(\s*)port:\s*8080(\s*(?:#.*)?)?$',

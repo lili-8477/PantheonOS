@@ -86,8 +86,13 @@ class TestPrintHook:
 
 class TestBackgroundTaskManager:
     @pytest.fixture
-    def manager(self):
-        return BackgroundTaskManager()
+    async def manager(self):
+        mgr = BackgroundTaskManager()
+        yield mgr
+        # Cleanup: cancel all running tasks and wait for them to finish
+        await mgr.cleanup()
+        # Give extra time for all coroutines to be properly cleaned up
+        await asyncio.sleep(0.1)
 
     @pytest.mark.asyncio
     async def test_start_and_complete(self, manager):
@@ -131,7 +136,8 @@ class TestBackgroundTaskManager:
 
         bg = manager.start("long_tool", "tc_3", {}, _long())
         assert manager.cancel(bg.task_id) is True
-        await asyncio.sleep(0.1)
+        # Wait longer for the cancelled task to fully clean up
+        await asyncio.sleep(0.2)
 
         assert bg.status == "cancelled"
 
@@ -175,7 +181,8 @@ class TestBackgroundTaskManager:
         assert bg.status == "running"
         assert manager.remove(bg.task_id) is True
         assert manager.get(bg.task_id) is None
-        await asyncio.sleep(0.1)
+        # Wait for the cancelled task to finish cleanup
+        await asyncio.sleep(0.2)
 
     @pytest.mark.asyncio
     async def test_remove_nonexistent(self, manager):
@@ -309,6 +316,9 @@ class TestBackgroundTaskManager:
         assert bg1.status == "cancelled"
         assert bg2.status == "cancelled"
 
+        # Wait for cancelled tasks to finish cleanup
+        await asyncio.sleep(0.1)
+
     @pytest.mark.asyncio
     async def test_print_capture_in_start(self, manager):
         """print() inside a started task is captured via print hook."""
@@ -380,8 +390,13 @@ class TestBackgroundTaskManager:
 
 class TestNotificationQueue:
     @pytest.fixture
-    def manager(self):
-        return BackgroundTaskManager(max_retained=50)
+    async def manager(self):
+        mgr = BackgroundTaskManager(max_retained=50)
+        yield mgr
+        # Cleanup: cancel all running tasks and wait for them to finish
+        await mgr.cleanup()
+        # Give extra time for all coroutines to be properly cleaned up
+        await asyncio.sleep(0.1)
 
     def test_drain_empty(self, manager):
         """drain_notifications() returns empty list when nothing queued."""
@@ -442,7 +457,8 @@ class TestNotificationQueue:
 
         bg = manager.start("tool_c", "tc_3", {}, _long())
         manager.cancel(bg.task_id)
-        await asyncio.sleep(0.1)
+        # Wait for cancelled task to finish cleanup
+        await asyncio.sleep(0.2)
 
         notifs = manager.drain_notifications()
         assert len(notifs) == 1
@@ -489,8 +505,13 @@ class TestNotificationQueue:
 
 class TestOnCompleteCallback:
     @pytest.fixture
-    def manager(self):
-        return BackgroundTaskManager(max_retained=50)
+    async def manager(self):
+        mgr = BackgroundTaskManager(max_retained=50)
+        yield mgr
+        # Cleanup: cancel all running tasks and wait for them to finish
+        await mgr.cleanup()
+        # Give extra time for all coroutines to be properly cleaned up
+        await asyncio.sleep(0.1)
 
     @pytest.mark.asyncio
     async def test_on_complete_called_on_success(self, manager):

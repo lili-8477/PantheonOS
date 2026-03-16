@@ -8,7 +8,7 @@ async def test_agent_call_local_toolset():
         "test",
         "You are an asistant, help me test my code",
     )
-    agent.toolset(toolset)
+    await agent.toolset(toolset)
 
     resp = await agent.run("Run the code `print('Hello, world!')`")
     print(resp.content)

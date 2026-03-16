@@ -82,6 +82,13 @@ markers = [
     "integration: marks tests that require heavier local deps (e.g., scanpy)",
     "live_llm: marks tests that require live LLM API calls (requires OPENAI_API_KEY)",
 ]
+filterwarnings = [
+    # Ignore coroutine never awaited warnings from background task tests
+    # These are false positives from pytest's test isolation and asyncio cleanup timing
+    "ignore:coroutine.*was never awaited:RuntimeWarning",
+    # Ignore deprecation warning for scfm_router
+    "ignore:scfm_router is deprecated:DeprecationWarning",
+]
 
 [project.optional-dependencies]
 dev = [

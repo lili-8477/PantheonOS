@@ -166,6 +166,9 @@ jobs:
           sarif_file: 'trivy-results.sarif'
         continue-on-error: true
 
+      # Note: This step requires Docker Hub token with "Read, Write, Delete" permissions
+      # If it fails with "Forbidden", check token permissions at:
+      # https://hub.docker.com/settings/security
       - name: Update Docker Hub README
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: peter-evans/dockerhub-description@v4
@@ -175,3 +178,4 @@ jobs:
           repository: ${{ env.DOCKER_IMAGE }}
           readme-filepath: ./docker/README.md
           short-description: 'Pantheon AI Agents - Dual-mode Docker image for local and production use'
+        continue-on-error: true

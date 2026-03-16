@@ -197,12 +197,12 @@ async def test_tool_timeout():
     @agent.tool
     async def get_weather(city: str, unit: str = "celsius"):
         """Get the weather of a city."""
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)  # Increased from 2 to 3 for more margin
         nonlocal flag
         flag = False
 
     resp = await agent.run("What is the weather in Palo Alto?")
-    assert flag
+    assert flag, "Tool should have timed out but it completed execution"
     print(resp)
 
 

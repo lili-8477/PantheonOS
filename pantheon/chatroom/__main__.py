@@ -12,7 +12,7 @@ load_dotenv(override=False)
 load_dotenv(os.path.join(os.path.expanduser("~"), ".pantheon", ".env"), override=False)
 
 # Now safe to import other modules
-from .start import start_services
+from pantheon.chatroom.start import start_services
 from pantheon.repl.setup_wizard import check_and_run_setup
 
 

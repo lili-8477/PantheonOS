@@ -626,25 +626,18 @@ async def start_services(
     run_task = asyncio.create_task(chat_room.run(log_level=log_level, remote=True))
     run_task.add_done_callback(_on_run_error)
 
-    # ===== Step 3.5: Wait for worker to subscribe, then open browser =====
-    if auto_ui and auto_start_nats and server_info is not None:
-        # Determine frontend URL
-        if isinstance(auto_ui, str):
-            frontend_url = auto_ui
-        else:
-            # Default to local dev server
-            frontend_url = "https://pantheon-ui.aristoteleo.com"
-
-        # Wait for NATS worker to be ready (subscribed) before opening browser
+    # ===== Step 3.5: Wait for worker to subscribe, then open browser / emit PANTHEON_READY =====
+    if auto_start_nats and server_info is not None:
+        # Wait for NATS worker to be ready (subscribed) before emitting ready event
         try:
             await asyncio.wait_for(chat_room._worker_ready.wait(), timeout=30)
-            logger.info("[STARTUP] Worker is ready, opening browser...")
+            logger.info("[STARTUP] Worker is ready.")
         except asyncio.TimeoutError:
             # Check if run_task already failed
             if run_task.done() and run_task.exception():
                 logger.error(f"[STARTUP] ChatRoom.run() failed before worker was ready: {run_task.exception()}")
             else:
-                logger.warning("[STARTUP] Worker did not become ready within 30s, opening browser anyway")
+                logger.warning("[STARTUP] Worker did not become ready within 30s, continuing anyway")
 
         # Calculate service ID based on id_hash
         service_id = generate_service_id(id_hash)
@@ -652,12 +645,33 @@ async def start_services(
         # Get NATS WebSocket URL from server_info
         nats_ws_url = server_info.get("ws_url", "ws://127.0.0.1:8080")
 
-        # Open browser with auto-connect configuration
-        open_auto_connect_browser(
-            frontend_url=frontend_url,
-            nats_url=nats_ws_url,
-            service_id=service_id,
-        )
+        # ── Emit machine-parseable ready event ──────────────────────────────
+        # Tauri (and any other host process) can listen on stdout for this line
+        # to learn the WS URL and service_id without any inter-process RPC.
+        import json as _json
+        _ready_event = {
+            "ws_url": nats_ws_url,
+            "tcp_url": server_info.get("tcp_url", "nats://localhost:4222"),
+            "service_id": service_id,
+        }
+        print(f"PANTHEON_READY:{_json.dumps(_ready_event)}", flush=True)
+        logger.info(f"[STARTUP] PANTHEON_READY event emitted (service_id={service_id})")
+        # ────────────────────────────────────────────────────────────────────
+
+        if auto_ui:
+            # Determine frontend URL
+            if isinstance(auto_ui, str):
+                frontend_url = auto_ui
+            else:
+                # Default to production deployment
+                frontend_url = "https://pantheon-ui.aristoteleo.com"
+
+            # Open browser with auto-connect configuration
+            open_auto_connect_browser(
+                frontend_url=frontend_url,
+                nats_url=nats_ws_url,
+                service_id=service_id,
+            )
 
     try:
         return await run_task
