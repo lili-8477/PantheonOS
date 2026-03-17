@@ -46,12 +46,13 @@ a = Analysis(
         'fastmcp',
         'fastmcp.server',
         'fastmcp.client',
+        'lupa', 'lupa.lua51',
         'importlib.metadata',
         'importlib_metadata',
     ],
-    hookspath=[],
+    hookspath=['hooks'],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['hooks/rthook_fakeredis.py'],
     excludes=[
         # ── Knowledge / vector DB (lancedb only used in RAG toolset, lazy import) ──
         'lancedb', 'lance', 'pyarrow', 'llama_index', 'qdrant_client',

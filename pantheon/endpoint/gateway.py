@@ -113,7 +113,7 @@ class UnifiedMCPGateway:
         await self._wait_until_ready()
 
     async def _wait_until_ready(
-        self, timeout: float = 5.0, interval: float = 0.1
+        self, timeout: float = 30.0, interval: float = 0.1
     ) -> None:
         """Wait until gateway HTTP server is ready to accept connections."""
         import socket
@@ -121,6 +121,13 @@ class UnifiedMCPGateway:
 
         start_time = time.time()
         while time.time() - start_time < timeout:
+            # Check if server task crashed
+            if self._server_task and self._server_task.done():
+                exc = self._server_task.exception()
+                if exc:
+                    raise RuntimeError(
+                        f"Gateway server task failed: {exc}"
+                    ) from exc
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.settimeout(0.5)
