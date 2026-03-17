@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import sys
 import uuid
 from pathlib import Path
@@ -546,6 +547,16 @@ async def start_services(
     # Convert all relative paths to absolute paths
     memory_dir = str(Path(memory_dir).resolve())
     workspace_path = str(Path(workspace_path).resolve())
+
+    # ===== Ensure .env exists (create from template if missing) =====
+    env_file = Path(workspace_path) / ".env"
+    if not env_file.exists():
+        env_template = Path(__file__).resolve().parent.parent / "factory" / "templates" / ".env.example"
+        if env_template.exists():
+            shutil.copy2(str(env_template), str(env_file))
+            logger.info(f"[STARTUP] Created .env template at {env_file}")
+        else:
+            logger.warning(f"[STARTUP] .env.example template not found at {env_template}")
 
     # ===== Step 1: Start or connect Endpoint =====
     endpoint = None

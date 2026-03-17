@@ -2033,3 +2033,35 @@ class ChatRoom(ToolSet):
                 "success": False,
                 "message": f"Failed to reload settings: {str(e)}"
             }
+
+    @tool(exclude=True)
+    async def check_api_keys(self) -> dict:
+        """Check the configuration status of LLM API keys.
+
+        Returns a dict with each key's status (configured, source, masked value)
+        and whether any key is configured at all.
+        """
+        import os
+        from pantheon.settings import get_settings
+
+        settings = get_settings()
+        key_names = [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GEMINI_API_KEY",
+            "DEEPSEEK_API_KEY",
+        ]
+
+        keys = {}
+        for key in key_names:
+            value = settings.get_api_key(key)
+            if value:
+                # Determine source
+                source = "env" if os.environ.get(key) else "settings"
+                masked = value[:6] + "***" if len(value) > 6 else "***"
+                keys[key] = {"configured": True, "source": source, "masked": masked}
+            else:
+                keys[key] = {"configured": False, "source": None, "masked": None}
+
+        has_any_key = any(v["configured"] for v in keys.values())
+        return {"keys": keys, "has_any_key": has_any_key}

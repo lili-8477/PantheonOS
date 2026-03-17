@@ -3,7 +3,7 @@
 block_cipher = None
 
 from PyInstaller.utils.hooks import copy_metadata, collect_data_files
-import os, sys, tempfile
+import os, sys
 
 datas = [
     ('pantheon/factory/templates', 'pantheon/factory/templates'),
@@ -15,17 +15,14 @@ datas += copy_metadata('fastmcp')
 datas += collect_data_files('litellm', includes=['**/*.json'])
 # fakeredis: model/_command_info.py loads os.path.join(dirname(__file__), '..', 'commands.json')
 # PyInstaller must include the JSON so the relative path resolves at runtime.
+# Also include model/__init__.py so the model/ directory exists in the bundle
+# (avoids runtime os.makedirs in read-only install locations like Program Files).
 datas += collect_data_files('fakeredis', includes=['commands.json'])
-
-# Runtime hook: ensure fakeredis/model/ dir exists so ../commands.json resolves.
-_rthook = tempfile.NamedTemporaryFile('w', suffix='.py', delete=False)
-_rthook.write(
-    "import sys, os\n"
-    "d = getattr(sys, '_MEIPASS', None)\n"
-    "if d:\n"
-    "    os.makedirs(os.path.join(d, 'fakeredis', 'model'), exist_ok=True)\n"
-)
-_rthook.close()
+import fakeredis
+_fakeredis_dir = os.path.dirname(fakeredis.__file__)
+_model_init = os.path.join(_fakeredis_dir, 'model', '__init__.py')
+if os.path.exists(_model_init):
+    datas.append((_model_init, 'fakeredis/model'))
 
 a = Analysis(
     ['pantheon/chatroom/__main__.py'],
@@ -65,7 +62,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[_rthook.name],
+    runtime_hooks=[],
     excludes=[
         # ── Knowledge / vector DB (lancedb only used in RAG toolset, lazy import) ──
         'lancedb', 'lance', 'pyarrow', 'llama_index', 'qdrant_client',
