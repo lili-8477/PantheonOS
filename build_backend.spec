@@ -91,7 +91,6 @@ a = Analysis(
         'IPython', 'ipywidgets',
         'sympy',
         'pandas',                         # ~45MB, not imported by backend code
-        'litellm.proxy',                  # ~19MB, proxy server not used (SDK only)
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
