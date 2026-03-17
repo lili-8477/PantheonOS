@@ -239,7 +239,7 @@ async def start_services(
                      Multiple servers separated by pipe (|). Overrides NATS_SERVERS env var.
                      Example: "wss://pantheon.aristoteleo.com/nats"
         auto_start_nats: Automatically start local NATS server (only works with --endpoint-mode embedded).
-                        Default: False. When enabled, provides nats://localhost:4222 and ws://127.0.0.1:8080.
+                        Default: False. When enabled, provides nats://localhost:4222 and ws://localhost:8080.
         auto_ui: Automatically open browser with auto-connect config when endpoint is ready.
                 Default: False. Requires --auto-start-nats. Can specify custom URL or use default
                 Vercel deployment. Examples: --auto-ui or --auto-ui "http://localhost:5173"
@@ -274,7 +274,7 @@ async def start_services(
 
         Args:
             frontend_url: Frontend base URL (e.g., "https://pantheon-ui.vercel.app")
-            nats_url: NATS WebSocket URL (e.g., "ws://127.0.0.1:8080")
+            nats_url: NATS WebSocket URL (e.g., "ws://localhost:8080")
             service_id: Service ID for connection
         """
         import webbrowser
@@ -654,7 +654,7 @@ async def start_services(
         service_id = generate_service_id(id_hash)
 
         # Get NATS WebSocket URL from server_info
-        nats_ws_url = server_info.get("ws_url", "ws://127.0.0.1:8080")
+        nats_ws_url = server_info.get("ws_url", "ws://localhost:8080")
 
         # ── Emit machine-parseable ready event ──────────────────────────────
         # Tauri (and any other host process) can listen on stdout for this line

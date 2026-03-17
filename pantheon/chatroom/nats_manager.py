@@ -115,7 +115,7 @@ class NATSManager:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                s.bind(("127.0.0.1", port))
+                s.bind(("0.0.0.0", port))
                 return False  # Port is available (bind succeeded)
             except OSError:
                 return True  # Port is in use (bind failed)
@@ -335,7 +335,7 @@ class NATSManager:
             # Check TCP connectivity
             try:
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection("127.0.0.1", tcp_port),
+                    asyncio.open_connection("localhost", tcp_port),
                     timeout=2.0,
                 )
                 writer.close()
@@ -347,7 +347,7 @@ class NATSManager:
             # Check WS port connectivity
             try:
                 r2, w2 = await asyncio.wait_for(
-                    asyncio.open_connection("127.0.0.1", ws_port),
+                    asyncio.open_connection("localhost", ws_port),
                     timeout=2.0,
                 )
                 w2.close()
@@ -367,7 +367,7 @@ class NATSManager:
 
             return {
                 "tcp_url": f"nats://localhost:{tcp_port}",
-                "ws_url": f"ws://127.0.0.1:{ws_port}",
+                "ws_url": f"ws://localhost:{ws_port}",
                 "http_url": f"http://localhost:{http_port}",
                 "config_file": instance_data.get("config_file"),
                 "log_file": instance_data.get("log_file"),
@@ -391,7 +391,7 @@ class NATSManager:
         Returns:
             dict: Server connection info including:
                 - tcp_url: nats://localhost:4222
-                - ws_url: ws://127.0.0.1:8080
+                - ws_url: ws://localhost:8080
                 - http_url: http://localhost:8222
                 - config_file: Path to generated config
                 - log_file: Path to server logs
@@ -468,7 +468,7 @@ class NATSManager:
         # 7. Return connection info
         server_info = {
             "tcp_url": f"nats://localhost:{self.tcp_port}",
-            "ws_url": f"ws://127.0.0.1:{self.ws_port}",
+            "ws_url": f"ws://localhost:{self.ws_port}",
             "http_url": f"http://localhost:{self.http_port}",
             "config_file": str(self._config_file),
             "log_file": str(log_file),
