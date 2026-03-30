@@ -1,5 +1,6 @@
 ---
 id: biologist
+model: high
 name: biologist
 description: |
   Biologist agent, thinking like a professional biologist,

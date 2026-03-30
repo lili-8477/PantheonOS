@@ -1,5 +1,6 @@
 ---
 id: leader
+model: high
 name: leader
 toolsets:
   - file_manager
