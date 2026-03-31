@@ -1,0 +1,230 @@
+{
+    "$schema": "https://pantheon.dev/schemas/settings.json",
+    "version": "1.0.0",
+    // ===== Environment File Configuration =====
+    // Path to environment variables file, relative to project directory
+    "env_file": ".env",
+    // ===== MCP Tools Configuration =====
+    // Whether to auto-inject MCP tools (from unified gateway) into agents
+    // For mcp abilities, this is not necessary, Package APIs are sufficient for all mcp tools
+    "enable_mcp_tools": false,
+    // Auto-overwrite agents/prompts/teams with latest factory defaults on startup. Set false to preserve user edits (settings.json and mcp.json are never overwritten).
+    "default_template_auto_update": false,
+    // ===== Endpoint Service Configuration =====
+    "endpoint": {
+        "service_name": "pantheon-chatroom-endpoint",
+        // Workspace: Endpoint's working directory (relative to PWD/Project root/Module load path)
+        "workspace_path": ".",
+        "log_level": "INFO",
+        // Whether to allow file transfer through Endpoint
+        "allow_file_transfer": true,
+        // Local ToolSet call timeout (seconds) - unified for Agent, ToolSetManager, and Kernel
+        "local_toolset_timeout": 1800,
+        // Local ToolSet execution mode:
+        // - "direct": Execute in current thread (fast, for lightweight tasks)
+        // - "thread": Execute in separate thread (isolated, for heavy tasks)
+        "local_toolset_execution_mode": "direct",
+        // === Tool Output Limits ===
+        // Maximum characters for tool output (used for smart truncation)
+        "max_tool_content_length": 3000,
+        // Maximum lines for file read operations
+        "max_file_read_lines": 1000,
+        // Maximum characters for file read operations (prevents single-line overflow)
+        "max_file_read_chars": 20000,
+        // Maximum results for glob/search operations
+        "max_glob_results": 50,
+        // Enable notebook execution logging (JSONL files in .pantheon/logs/notebook/)
+        "enable_notebook_execution_logging": true
+    },
+    // ===== Built-in Services Configuration =====
+    // Service modes: Specify service runtime modes
+    // - "local": Run in Endpoint's process (fast, uses ThreadJob isolation)
+    // - "remote": Run in separate process (slower, better isolation)
+    "services": {
+        "builtin": [
+            // === Tier 1: Core Services (recommended for all deployments) ===
+            "file_manager", // File operations (read, write, list, delete, etc.)
+            "package", // Read-only access to available packages
+            // === Tier 2: Common Development Tools ===
+            "web", // Web search (using DDGS)
+            "python_interpreter", // Python code execution
+            "shell", // Shell command execution (use with caution)
+            // "knowledge", // Knowledge base/RAG
+            // === Tier 3: Advanced Tools (enable as needed) ===
+            "integrated_notebook", // Integrated Notebook (with file operations)
+            "evolution"
+            // === More Available Services (commented, enable as needed) ===
+            // "file_editor",     // Advanced file editing (Claude Code style)
+            // "jupyter_kernel",  // Standard Jupyter Kernel
+            // "r_interpreter",   // R code execution
+            // "julia_interpreter", // Julia code execution
+            // "scraper",         // ScraperAPI search/scrape (requires API Key)
+        ],
+        // Service mode configuration
+        // "default" is the default mode for services not explicitly specified
+        "modes": {
+            "default": "local"
+            // "python_interpreter": "local",  // Lightweight services suit local
+            // "julia_interpreter": "remote"   // Heavy computation may need isolation
+        }
+    },
+    // ===== Remote Backend Configuration =====
+    "remote": {
+        // Remote backend type, currently only "nats" is supported
+        "backend": "nats",
+        // NATS server address list
+        "nats_servers": [
+            "nats://localhost:4222"
+        ],
+        // MCP server exposed hostname (use localhost for development)
+        "server_host": "localhost"
+    },
+    // ===== ChatRoom Configuration =====
+    "chatroom": {
+        // Chat history storage directory
+        "memory_dir": "./.pantheon/memory",
+        // Enable NATS streaming (required for remote services)
+        "enable_nats_streaming": true,
+        // Speech-to-text model
+        "speech_to_text_model": "gpt-4o-mini-transcribe"
+    },
+    // ===== REPL Configuration =====
+    "repl": {
+        // Disable log output
+        "quiet": true,
+        // Default team template path
+        "default_template": null
+    },
+    // ===== API Keys Configuration =====
+    // All API keys support environment variable override
+    // Priority: environment variable > env_file > settings.json
+    "api_keys": {
+        "OPENAI_API_KEY": null,
+        "OPENAI_API_BASE": null, // Custom OpenAI endpoint
+        "ANTHROPIC_API_KEY": null,
+        "GOOGLE_API_KEY": null,
+        "ZAI_API_KEY": null,
+        "SCRAPER_API_KEY": null, // ScraperAPI key
+        "HUGGINGFACE_TOKEN": null
+    },
+    // ===== Knowledge/RAG Configuration =====
+    "knowledge": {
+        // Knowledge base storage path
+        "storage_path": "~/.pantheon-knowledge",
+        // Qdrant vector database configuration
+        "qdrant": {
+            "location": null, // Remote Qdrant URL
+            "path": null, // Local storage path
+            "api_key": null, // Qdrant Cloud API Key
+            "prefer_grpc": false // Whether to prefer gRPC
+        }
+    },
+    // ===== Model Selection Configuration =====
+    // Smart model selection based on available API keys
+    "models": {
+        "provider_priority": ["anthropic"],
+        "provider_models": {
+            "anthropic": {
+                "high": ["anthropic/claude-sonnet-4-6"],
+                "normal": ["anthropic/claude-haiku-4-5"],
+                "low": ["ollama_chat/qwen3:8b"]
+            }
+        }
+    },
+    // ===== Image Generation Configuration =====
+    // Model selection for generate_image tool
+    // Options: "high", "normal", "low", or specific model name
+    // - "high": gemini/gemini-3-pro-image-preview (Nano Banana Pro, best quality)
+    // - "normal": gemini/gemini-3.1-flash-image-preview (Nano Banana 2, fast)
+    // - "low": gemini/gemini-2.5-flash-image (Nano Banana first-gen, stable)
+    "image_gen_model": "normal",
+    // Custom image generation models (optional - override code defaults)
+    // "image_gen_models": {
+    //     "gemini": {
+    //         "high": ["gemini/gemini-3-pro-image-preview"],
+    //         "normal": ["gemini/gemini-3-pro-image-preview"]
+    //     },
+    //     "openai": {
+    //         "high": ["dall-e-3"],
+    //         "normal": ["dall-e-3"]
+    //     }
+    // },
+    // ===== ACE (Agentic Context Engineering) Configuration =====
+    // Learning is a long-term memory system that learns from conversation trajectories
+    "learning": {
+        // Enable learning system (extract skills from trajectories of each user request/response run)
+        "enable_learning": true,
+        // Enable skill injection into agent system prompts (user_rules, user-defined strategies, high-score skills)
+        "enable_injection": true,
+        // Enable dynamic skill injection (context injectors), defaults to enable_injection if omitted
+        "enable_dynamic_injection": true,
+        // Learning mode: "pipeline" (default, lightweight) or "team" (multi-agent)
+        "mode": "pipeline",
+        // Team ID for team mode (uses skill_learning_team template)
+        "team_id": "learning/skill_learning_team_v4",
+        // Enable agent-specific skill scope filtering, If false, all agents see all skills (recommended for simpler setups)
+        "enable_agent_scope": false,
+        // LLM model for reflection and skill management, Uses quality level: "high", "normal", "low", or specific model name
+        "learning_model": "low",
+        // Skillbook file path (relative to .pantheon/learning/)
+        "skillbook_path": "skillbook.json",
+        // Learning data directory (relative to .pantheon/learning/)
+        "learning_dir": "tmp",
+        // Max skills per section (null = unlimited, or set a number to auto-evict low-score skills)
+        "max_skills_per_section": null,
+        // Max characters for single skill content (Skillbook limit)
+        "max_content_length": 2000,
+        // Max length for tool argument values in learning trajectory
+        "max_tool_arg_length": 1000,
+        // Max length for tool output in learning trajectory
+        "max_tool_output_length": 3000,
+        // Delete learning trajectory files after processing, Set to true in production for privacy/disk space
+        "cleanup_after_learning": false,
+        // === Static Injection Section Filter ===
+        // Control which skillbook sections are statically injected into agent instructions
+        // - null/undefined: Use default rules (user_rules + type="user" strategies only)
+        // - ["*"]: Inject all sections (enable all skills)
+        // - ["section1", "section2", ...]: Inject only specified sections
+        // Example sections: "user_rules", "strategies", "debugging", "data_analysis", etc.
+        "static_injection_sections": ["user_rules"],
+        // === Quality Control Thresholds ===
+        // Minimum confidence to process reflection (skip if below)
+        "min_confidence_threshold": 0.5,
+        // Minimum atomicity score for ADD operations (reject if below)
+        "min_atomicity_score": 0.85,
+        // === Dynamic Injection Configuration ===
+        // Maximum number of skills to inject dynamically per task (based on semantic relevance)
+        "dynamic_injection_top_k": 3
+    },
+    // ===== Context Compression Configuration =====
+    // Automatic context compression when approaching token limits
+    "context_compression": {
+        // Enable context compression (disabled by default)
+        "enable": true,
+        // LLM model for compression, Uses quality level: "high", "normal", "low", or specific model name
+        "compression_model": "normal",
+        // Trigger compression when token usage reaches this percentage (0.0-1.0)
+        // TEST MODE: set to 0 to compress based on message count (min_messages_for_compression)
+        "threshold": 0.4,
+        // Number of recent messages to preserve uncompressed
+        "preserve_recent_messages": 5,
+        // Max length for individual tool argument values in compressed output
+        "max_tool_arg_length": 1000,
+        // Max length for tool output in compressed output
+        "max_tool_output_length": 3000,
+        // Wait this many messages before retrying after a compression failure
+        "retry_after_messages": 10
+    },
+    // ===== LLM Retry Configuration =====
+    // Exponential backoff retry for transient LLM API errors (e.g., mid-stream overloaded)
+    "llm_retry": {
+        // Maximum number of retries per model before falling back to the next model
+        "max_retries": 3,
+        // Base delay in seconds (doubles each retry: ~1s, ~2s, ~4s)
+        "base_delay": 1.0,
+        // Maximum delay cap in seconds
+        "max_delay": 30.0,
+        // Jitter factor (0.0-1.0) to randomize delay and avoid thundering herd
+        "jitter": 0.5
+    }
+}

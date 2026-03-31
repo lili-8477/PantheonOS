@@ -1,0 +1,116 @@
+version: '3.8'
+
+# =============================================================================
+# PantheonOS Hub Mode - Multi-User Deployment
+# =============================================================================
+# Shared infrastructure (NATS + Qdrant) with per-user Pantheon containers.
+#
+# Usage:
+#   1. Start shared infra:  docker compose up -d nats qdrant nginx
+#   2. Add users:           ./scripts/add-user.sh <username>
+#   3. Remove users:        ./scripts/remove-user.sh <username>
+#   4. View status:         docker compose ps
+# =============================================================================
+
+services:
+  # ─── Shared NATS Message Broker ───────────────────────────────────────────
+  nats:
+    image: nats:2.10-alpine
+    container_name: pantheon-nats
+    command: -c /etc/nats/nats-ws.conf
+    ports:
+      - "4222:4222"     # NATS client (internal use)
+      - "8080:8080"     # NATS WebSocket (internal, proxied via nginx /ws/)
+      - "8222:8222"     # NATS monitoring (for health checks)
+    volumes:
+      - ./config/nats-ws.conf:/etc/nats/nats-ws.conf:ro
+      - ./config/certs:/etc/nats/certs:ro
+      - nats_jetstream:/tmp/nats/jetstream
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - pantheon-network
+
+  # ─── Shared Qdrant Vector Database ────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: pantheon-qdrant
+    ports:
+      - "127.0.0.1:6333:6333"   # HTTP API (localhost only)
+      - "127.0.0.1:6334:6334"   # gRPC API (localhost only)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - pantheon-network
+
+  # ─── Nginx Reverse Proxy + Auth ───────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: pantheon-nginx
+    ports:
+      - "80:80"         # bioFlow UI + WS proxy (TLS handled upstream)
+    volumes:
+      - ./bioflow:/usr/share/nginx/html:ro
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/htpasswd:/etc/nginx/htpasswd:ro
+      - ./config/certs:/etc/nginx/certs:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pantheon-network
+
+  # ─── User Pantheon Containers (added dynamically) ─────────────────────────
+  # Each user is added via ./scripts/add-user.sh which creates a container
+  # using the template below. Example for reference:
+  #
+  # pantheon-alice:
+  #   image: nanguage/pantheon-agents:latest
+  #   container_name: pantheon-user-alice
+  #   environment:
+  #     - PANTHEON_MODE=hub
+  #     - ID_HASH=alice
+  #     - PANTHEON_REMOTE_BACKEND=nats
+  #     - NATS_SERVERS=nats://nats:4222
+  #     - NATS_MONITOR_URL=http://nats:8222
+  #     - QDRANT_LOCATION=http://qdrant:6333
+  #     - QDRANT_HTTP_URL=http://qdrant:6333
+  #   env_file:
+  #     - ./workspaces/alice/.env
+  #   volumes:
+  #     - ./workspaces/alice:/workspace
+  #   working_dir: /workspace
+  #   depends_on:
+  #     nats:
+  #       condition: service_healthy
+  #     qdrant:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - pantheon-network
+
+volumes:
+  nats_jetstream:
+    driver: local
+  qdrant_data:
+    driver: local
+
+networks:
+  pantheon-network:
+    driver: bridge
