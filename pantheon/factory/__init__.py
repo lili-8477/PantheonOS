@@ -40,7 +40,6 @@ async def create_agent(
         description=description,
         think_tool=think_tool,
     )
-    agent.disable_background = kwargs.get("disable_background", False)
     agent.not_loaded_toolsets = []
     toolsets_added = []
     mcp_server_added = []

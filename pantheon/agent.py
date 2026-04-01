@@ -913,44 +913,19 @@ class Agent:
                     f"Agent '{self.name}': Failed to get tools from provider '{provider_name}': {e}"
                 )
 
-        # 3. Inject _background parameter into all eligible tool schemas
-        # Skip if agent has disable_background=True (for script-based agents that need synchronous execution)
-        if getattr(self, 'disable_background', False):
-            return all_tools
-
-        _BG_PARAM_SKIP = {"background_task"}
-        _BG_PARAM_SKIP_PREFIXES = ("transfer_to_", "call_agent_")
-
-        all_tools = base_tools + provider_tools
-        for tool_dict in all_tools:
-            name = tool_dict["function"]["name"]
-            if name in _BG_PARAM_SKIP or any(
-                name.startswith(p) for p in _BG_PARAM_SKIP_PREFIXES
-            ):
-                continue
-
-            func = tool_dict["function"]
-            # Deep copy parameters to avoid mutating cached provider schemas
-            if "parameters" in func:
-                func["parameters"] = copy.deepcopy(func["parameters"])
-            else:
-                func["parameters"] = {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": False,
-                }
-
-            func["parameters"]["properties"]["_background"] = {
-                "type": "boolean",
-                "description": (
-                    "Set true to run in background without blocking. "
-                    "You'll get a task_id to track progress via background_task()."
-                ),
-            }
-            # In strict mode (non-litellm), all params must be in required
-            if not self.force_litellm:
-                func["parameters"].setdefault("required", []).append("_background")
+        # 3. _background parameter injection REMOVED
+        #
+        # Previously, _background was injected into every tool schema, letting
+        # the LLM choose to run tools in background. This caused agents to lose
+        # track of tool results (returned as side-channel notifications instead
+        # of tool_result messages), leading to confusion loops and wasted calls.
+        #
+        # Background execution is still available via the explicit background_task
+        # tool — the agent must consciously choose to use it.
+        #
+        # The _background flag is still handled in _handle_tool_calls() for
+        # backward compatibility if an LLM somehow sends it, but it's no longer
+        # advertised in tool schemas.
 
         return all_tools
 

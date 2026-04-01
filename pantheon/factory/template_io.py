@@ -539,7 +539,6 @@ class UnifiedMarkdownParser:
             source_path=source_path,
             include_tools=metadata.get("include_tools"),
             deferred_tools=metadata.get("deferred_tools"),
-            disable_background=bool(metadata.get("disable_background", False)),
         )
 
     def parse_team(
