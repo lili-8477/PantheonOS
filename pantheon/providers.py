@@ -491,6 +491,9 @@ class ToolSetProvider(ToolProvider):
         """Initialize ToolSetProvider"""
         self.toolset_proxy = toolset_proxy
         self._tools_cache: Optional[list[ToolInfo]] = None
+        self.tools_include: Optional[set[str]] = None  # Tool names to include (whitelist filter)
+        self.deferred_tools: Optional[set[str]] = None  # Tool names to defer (not sent to LLM by default)
+        self._deferred_cache: Optional[list[ToolInfo]] = None  # Cache of deferred tool definitions
         self._tool_descriptions: dict[
             str, dict
         ] = {}  # name -> tool_desc for parameter filtering
@@ -563,10 +566,24 @@ class ToolSetProvider(ToolProvider):
                     )
                     # Skip this tool instead of adding a fake ToolInfo
 
+            # Separate deferred tools (before include filter, before caching)
+            if self.deferred_tools:
+                self._deferred_cache = [t for t in tool_infos if t.name in self.deferred_tools]
+                tool_infos = [t for t in tool_infos if t.name not in self.deferred_tools]
+                if self._deferred_cache:
+                    logger.debug(
+                        f"ToolSetProvider[{self.toolset_name}]: deferred {len(self._deferred_cache)} tools: "
+                        f"{[t.name for t in self._deferred_cache]}"
+                    )
+
+            # Filter tools if include list is set
+            if self.tools_include:
+                tool_infos = [t for t in tool_infos if t.name in self.tools_include]
+
             # Cache results
             self._tools_cache = tool_infos
             logger.debug(
-                f"ToolSetProvider{self.toolset_name} listed {len(tool_infos)} tools: {[tool.name for tool in tool_infos]}"
+                f"ToolSetProvider[{self.toolset_name}] listed {len(tool_infos)} tools: {[tool.name for tool in tool_infos]}"
             )
 
             return tool_infos
@@ -574,6 +591,34 @@ class ToolSetProvider(ToolProvider):
         except Exception as e:
             logger.error(f"Failed to list tools from ToolSet: {e}")
             raise
+
+    async def search_deferred_tools(self, query: str = "") -> list:
+        """Search deferred tools by name or description.
+
+        Args:
+            query: Search string to match against tool names and descriptions.
+                   Empty string returns all deferred tools.
+
+        Returns:
+            List of dicts with 'name' and 'description' for matching deferred tools.
+        """
+        if not self._deferred_cache:
+            # Force load if not cached
+            self._tools_cache = None
+            await self.list_tools()
+
+        if not self._deferred_cache:
+            return []
+
+        if not query:
+            return [{"name": t.name, "description": t.description} for t in self._deferred_cache]
+
+        query_lower = query.lower()
+        return [
+            {"name": t.name, "description": t.description}
+            for t in self._deferred_cache
+            if query_lower in t.name.lower() or query_lower in (t.description or "").lower()
+        ]
 
     async def call_tool(self, name: str, args: dict) -> Any:
         """Call a tool on the ToolSet"""

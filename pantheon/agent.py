@@ -1099,6 +1099,29 @@ class Agent:
                     break
 
         if not resolved_name:
+            # Check deferred tools across all providers
+            for provider_name, provider in self.providers.items():
+                if hasattr(provider, '_deferred_cache') and provider._deferred_cache:
+                    for deferred_tool in provider._deferred_cache:
+                        full_name = f"{provider_name}__{deferred_tool.name}"
+                        if full_name == prefixed_name:
+                            # Tool found in deferred cache — route to provider
+                            logger.info(f"Loading deferred tool: {prefixed_name}")
+                            resolved_name = full_name
+                            all_tools[full_name] = provider_name
+                            break
+                        # Also try suffix matching for deferred tools
+                        if full_name.endswith(prefixed_name):
+                            logger.info(
+                                f"Loading deferred tool: {full_name} (matched via suffix '{prefixed_name}')"
+                            )
+                            resolved_name = full_name
+                            all_tools[full_name] = provider_name
+                            break
+                if resolved_name:
+                    break
+
+        if not resolved_name:
             raise ValueError(
                 f"Tool '{prefixed_name}' not found. Available tools: {list(all_tools.keys())[:10]}..."
             )
@@ -1346,10 +1369,18 @@ class Agent:
                     # Merge instead of overwrite to preserve all metadata fields
                     tool_message["_metadata"].update(tool_metadata)
 
+                # Derive storage_dir from workspace for large output persistence
+                storage_dir = None
+                workdir = context_variables.get("workdir", "")
+                if workdir:
+                    import os
+                    storage_dir = os.path.join(workdir, ".pantheon", "tool_results")
+
                 # Process and truncate tool result in one step
                 content = process_tool_result(
                     result,
-                    max_length=self.max_tool_content_length
+                    max_length=self.max_tool_content_length,
+                    storage_dir=storage_dir,
                 )
                 
                 tool_message.update({

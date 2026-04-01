@@ -537,6 +537,8 @@ class UnifiedMarkdownParser:
             tags=list(metadata.get("tags", []) or []),
             think_tool=bool(metadata.get("think_tool", False)),
             source_path=source_path,
+            include_tools=metadata.get("include_tools"),
+            deferred_tools=metadata.get("deferred_tools"),
         )
 
     def parse_team(
@@ -661,6 +663,8 @@ class UnifiedMarkdownParser:
                         tags=list(agent_metadata.get("tags", []) or []),
                         think_tool=bool(agent_metadata.get("think_tool", False)),
                         source_path=source_path,
+                        include_tools=agent_metadata.get("include_tools"),
+                        deferred_tools=agent_metadata.get("deferred_tools"),
                     )
                 )
             else:

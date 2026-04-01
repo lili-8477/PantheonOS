@@ -149,7 +149,10 @@ class CompressionPlugin(TeamPlugin):
                 + memory._messages[compress_end:]
             )
             memory._messages = new_messages
-            
+
+            # ── Post-compact: Re-inject skills into active agent ──
+            await self._reinject_skills_after_compression(team)
+
             logger.info(
                 f"Context compression checkpoint inserted at index {compress_end}. "
                 f"Compressed {compress_end - compress_start} messages ({result.original_tokens} -> {result.new_tokens} tokens)."
@@ -191,3 +194,32 @@ class CompressionPlugin(TeamPlugin):
         
         # Perform compression with force=True to bypass chunk size checks
         return await self._perform_compression(team, memory, force=True)
+
+    async def _reinject_skills_after_compression(self, team: "PantheonTeam") -> None:
+        """Re-inject dynamic skills after compression to prevent skill loss.
+
+        After compression, the conversation summary may not retain skill details.
+        This re-injects the most relevant skills into the active agent's instructions
+        so they're available in subsequent turns.
+        """
+        try:
+            from pantheon.internal.learning.plugin import get_global_learning_plugin
+
+            learning_plugin = get_global_learning_plugin()
+            if not learning_plugin or not learning_plugin._learning_resources:
+                return
+
+            resources = learning_plugin._learning_resources
+            skillbook = resources.get("skillbook")
+            if not skillbook:
+                return
+
+            # Re-inject static skills (user_rules, strategies)
+            from pantheon.internal.learning.skill_injector import inject_skills_to_team
+
+            injected = await inject_skills_to_team(team, skillbook)
+            if injected > 0:
+                logger.info(f"Post-compact: Re-injected static skills into {injected} agents")
+
+        except Exception as e:
+            logger.warning(f"Post-compact skill re-injection failed: {e}")

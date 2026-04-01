@@ -26,6 +26,8 @@ class AgentConfig:
     tags: List[str] = field(default_factory=list)
     think_tool: bool = False
     source_path: Optional[str] = None
+    include_tools: Optional[Dict[str, List[str]]] = None  # per-toolset tool whitelist
+    deferred_tools: Optional[Dict[str, List[str]]] = None  # per-toolset deferred tools
 
     def to_dict(self) -> dict:
         """Convert to dictionary"""
@@ -41,6 +43,8 @@ class AgentConfig:
             "tags": self.tags,
             "think_tool": self.think_tool,
             "source_path": self.source_path,
+            "include_tools": self.include_tools,
+            "deferred_tools": self.deferred_tools,
         }
 
     @classmethod
@@ -58,6 +62,8 @@ class AgentConfig:
             tags=data.get("tags", []),
             think_tool=data.get("think_tool", False),
             source_path=data.get("source_path"),
+            include_tools=data.get("include_tools"),
+            deferred_tools=data.get("deferred_tools"),
         )
 
     def to_creation_payload(self) -> dict:
@@ -71,6 +77,8 @@ class AgentConfig:
             "toolsets": list(self.toolsets or []),
             "mcp_servers": list(self.mcp_servers or []),
             "think_tool": self.think_tool,
+            "include_tools": self.include_tools or {},
+            "deferred_tools": self.deferred_tools or {},
         }
 
 

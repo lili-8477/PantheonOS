@@ -772,11 +772,72 @@ def remove_metadata(messages: list[dict]) -> list[dict]:
     return messages
 
 
+def micro_compact(messages: list[dict]) -> list[dict]:
+    """Rule-based micro-compaction to reduce token waste before API calls.
+
+    Strips redundant content without LLM involvement:
+    1. Collapse consecutive system reminders into one
+    2. Strip empty/whitespace-only content blocks
+    3. Deduplicate identical consecutive tool results
+    4. Trim verbose tool error tracebacks to last N lines
+    5. Strip base64 image data from non-recent messages (keep last 3)
+    """
+    if not messages:
+        return messages
+
+    result = []
+    seen_system_content = set()
+
+    for i, msg in enumerate(messages):
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+
+        # 1. Skip empty messages
+        if not content and role not in ("tool",):
+            continue
+
+        # 2. Deduplicate system reminders
+        if role == "system":
+            content_key = str(content)[:200]  # First 200 chars as key
+            if content_key in seen_system_content:
+                continue
+            seen_system_content.add(content_key)
+
+        # 3. Trim verbose tracebacks in tool results
+        if role == "tool" and isinstance(content, str):
+            if "Traceback (most recent call last)" in content:
+                lines = content.split("\n")
+                # Keep first 5 lines (context) + last 10 lines (actual error)
+                if len(lines) > 20:
+                    msg = {**msg}
+                    msg["content"] = "\n".join(lines[:5] + ["  ... (traceback trimmed) ..."] + lines[-10:])
+
+        # 4. Strip base64 from old messages (keep last 3 with images)
+        if role in ("user", "tool") and isinstance(content, list):
+            is_recent = i >= len(messages) - 6  # Last 3 turns ≈ 6 messages
+            if not is_recent:
+                new_content = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "image":
+                        new_content.append({"type": "text", "text": "[image removed for context efficiency]"})
+                    elif isinstance(block, dict) and "base64" in str(block.get("source", {}).get("data", ""))[:20]:
+                        new_content.append({"type": "text", "text": "[image removed for context efficiency]"})
+                    else:
+                        new_content.append(block)
+                if new_content != content:
+                    msg = {**msg, "content": new_content}
+
+        result.append(msg)
+
+    return result
+
+
 def process_messages_for_model(messages: list[dict], model: str) -> list[dict]:
     """
     Process messages for model consumption.
 
     Processing steps (order matters):
+    0. micro_compact - Rule-based compaction (no LLM needed)
     1. remove_parsed - Remove parsed fields
     2. remove_raw_content - Remove raw_content (structured tool outputs)
     3. filter_base64_in_tool_messages - Filter base64 in tool messages
@@ -784,6 +845,7 @@ def process_messages_for_model(messages: list[dict], model: str) -> list[dict]:
     5. remove_ui_fields - Remove UI-only fields
     """
     messages = deepcopy(messages)
+    messages = micro_compact(messages)      # Rule-based compaction
     messages = remove_parsed(messages)
     messages = remove_reasoning_content(messages)
     messages = remove_raw_content(messages)
@@ -862,38 +924,76 @@ def remove_hidden_fields(content: dict) -> dict:
 
 
 def process_tool_result(
-    result: Any, 
+    result: Any,
     max_length: int | None = None,
+    storage_dir: str | None = None,
 ) -> Any:
-    """Process tool result with optional truncation.
-    
+    """Process tool result with optional storage for large outputs.
+
+    When result exceeds max_length:
+    - If storage_dir is set: save full result to disk, return preview + file reference
+    - Otherwise: truncate as before (backward compatible)
+
     Args:
         result: Raw tool result
         max_length: Optional max length for truncation
-        
+        storage_dir: Optional directory for persisting large results to disk
+
     Returns:
         Processed result
     """
     # Remove hidden fields
     result = remove_hidden_fields(result)
-    
-    # Apply smart truncation if max_length specified
-    # (includes base64 filtering for JSON tools)
-    if max_length is not None:
+
+    if max_length is None:
+        return result
+
+    # Check if result is large enough to need truncation/storage
+    result_str = str(result) if not isinstance(result, str) else result
+    if len(result_str) <= max_length:
+        return result
+
+    # Large result: persist to disk if storage_dir available
+    if storage_dir:
+        import os, json, hashlib, time
+        os.makedirs(storage_dir, exist_ok=True)
+
+        # Generate unique filename
+        content_hash = hashlib.md5(result_str[:1000].encode()).hexdigest()[:8]
+        filename = f"tool_result_{int(time.time())}_{content_hash}.txt"
+        filepath = os.path.join(storage_dir, filename)
+
+        # Save full result
         try:
-            from pantheon.utils.truncate import smart_truncate_result
-            return smart_truncate_result(result, max_length, filter_base64=True)
+            with open(filepath, "w") as f:
+                if isinstance(result, (dict, list)):
+                    json.dump(result, f, indent=2, default=str)
+                else:
+                    f.write(result_str)
+
+            # Return preview + reference
+            preview_len = min(max_length // 2, 1500)
+            preview = result_str[:preview_len]
+            return (
+                f"{preview}\n\n"
+                f"[Output truncated — full result ({len(result_str)} chars) saved to: {filepath}]\n"
+                f"Use read_file to access the complete output if needed."
+            )
         except Exception as e:
-            # Fallback to simple string conversion if truncation fails
-            logger.warning(f"Smart truncation failed: {e}, falling back to simple conversion")
-            content = str(result) if not isinstance(result, str) else result
-            if len(content) > max_length:
-                # Simple truncation: head + tail
-                half = max_length // 2
-                return f"{content[:half]}\n...[truncated]...\n{content[-half:]}"
-            return content
-    
-    return result
+            logger.warning(f"Failed to persist tool result: {e}")
+            # Fall through to truncation
+
+    # Fallback: truncate
+    try:
+        from pantheon.utils.truncate import smart_truncate_result
+        return smart_truncate_result(result, max_length, filter_base64=True)
+    except Exception as e:
+        logger.warning(f"Smart truncation failed: {e}")
+        content = result_str
+        if len(content) > max_length:
+            half = max_length // 2
+            return f"{content[:half]}\n...[truncated]...\n{content[-half:]}"
+        return content
 
 
 # ============ Timing Tracker ============

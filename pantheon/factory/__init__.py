@@ -103,6 +103,17 @@ async def create_agent(
             from pantheon.providers import ToolSetProvider
 
             toolset_provider = ToolSetProvider(proxy)
+
+            # Apply include_tools filter if specified for this toolset
+            _include = kwargs.get("include_tools", {})
+            if isinstance(_include, dict) and toolset_name in _include:
+                toolset_provider.tools_include = set(_include[toolset_name])
+
+            # Apply deferred_tools if specified for this toolset
+            _deferred = kwargs.get("deferred_tools", {})
+            if isinstance(_deferred, dict) and toolset_name in _deferred:
+                toolset_provider.deferred_tools = set(_deferred[toolset_name])
+
             await toolset_provider.initialize()
 
             # Add provider to agent
