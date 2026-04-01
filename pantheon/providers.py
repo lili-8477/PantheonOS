@@ -76,6 +76,8 @@ class MCPProvider(ToolProvider):
     def invalidate_cache(self):
         """Invalidate tools cache to force refresh on next list_tools call."""
         self._tools_cache = None
+        self.tools_include = None  # PANTHEON_WORKSPACE_PATCH:toolset_provider_cache_init
+
         self._cache_time = 0
         logger.debug(f"MCPProvider '{self.uri}': cache invalidated")
 
@@ -432,8 +434,13 @@ class LocalProvider(ToolProvider):
                     )
                     # Skip this tool instead of adding a fake ToolInfo
 
+            # Filter tools if include list is set
+            if self.tools_include:
+                tool_infos = [t for t in tool_infos if t.name in self.tools_include]
+
             # Cache results
-            self._tools_cache = tool_infos
+            self._tools_cache = tool_infos  # PANTHEON_WORKSPACE_PATCH:toolset_provider_filter
+
             logger.debug(
                 f"LocalProvider[{self.toolset_name}] listed {len(tool_infos)} tools: {[tool.name for tool in tool_infos]}"
             )

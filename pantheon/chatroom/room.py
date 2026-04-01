@@ -811,7 +811,25 @@ class ChatRoom(ToolSet):
             return {"success": False, "error": str(e)}
 
     @tool
-    async def get_agents(self, chat_id: str = None) -> dict:
+    async def get_token_stats(self, chat_id: str = None) -> dict:
+        """Get token usage statistics for a chat session."""
+        if not chat_id:
+            return {"success": False, "error": "chat_id is required"}
+        try:
+            team = await self.get_team_for_chat(chat_id)
+        except KeyError:
+            return {"success": False, "error": f"Chat '{chat_id}' not found"}
+        try:
+            from pantheon.repl.utils import get_detailed_token_stats
+            fallback = {"total_input_tokens": 0, "total_output_tokens": 0, "message_count": 0}
+            stats = await get_detailed_token_stats(self, chat_id, team, fallback)
+            return {"success": True, "stats": stats}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    @tool
+    async def get_agents(  # PANTHEON_WORKSPACE_PATCH:get_token_stats
+self, chat_id: str = None) -> dict:
         """Get the team agents info for a specific chat."""
 
         def get_agent_info(agent: Agent):

@@ -914,6 +914,10 @@ class Agent:
                 )
 
         # 3. Inject _background parameter into all eligible tool schemas
+        # Skip if agent has disable_background=True (for script-based agents that need synchronous execution)
+        if getattr(self, 'disable_background', False):
+            return all_tools
+
         _BG_PARAM_SKIP = {"background_task"}
         _BG_PARAM_SKIP_PREFIXES = ("transfer_to_", "call_agent_")
 

@@ -26,8 +26,11 @@ class AgentConfig:
     tags: List[str] = field(default_factory=list)
     think_tool: bool = False
     source_path: Optional[str] = None
+    include_tools: Optional[Dict[str, List[str]]] = None
+  # PANTHEON_WORKSPACE_PATCH:agent_config_include_tools
     include_tools: Optional[Dict[str, List[str]]] = None  # per-toolset tool whitelist
     deferred_tools: Optional[Dict[str, List[str]]] = None  # per-toolset deferred tools
+    disable_background: bool = False  # disable _background param injection for synchronous execution
 
     def to_dict(self) -> dict:
         """Convert to dictionary"""
@@ -64,6 +67,7 @@ class AgentConfig:
             source_path=data.get("source_path"),
             include_tools=data.get("include_tools"),
             deferred_tools=data.get("deferred_tools"),
+            disable_background=data.get("disable_background", False),
         )
 
     def to_creation_payload(self) -> dict:
@@ -79,6 +83,7 @@ class AgentConfig:
             "think_tool": self.think_tool,
             "include_tools": self.include_tools or {},
             "deferred_tools": self.deferred_tools or {},
+            "disable_background": self.disable_background,
         }
 
 
@@ -139,4 +144,6 @@ class TeamConfig:
             agents=agents,
             tags=data.get("tags", []),
             source_path=data.get("source_path"),
-        )
+            include_tools=data.get("include_tools"),
+        )  # PANTHEON_WORKSPACE_PATCH:from_dict_include_tools
+
