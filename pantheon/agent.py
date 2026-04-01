@@ -913,19 +913,12 @@ class Agent:
                     f"Agent '{self.name}': Failed to get tools from provider '{provider_name}': {e}"
                 )
 
-        # 3. _background parameter injection REMOVED
-        #
-        # Previously, _background was injected into every tool schema, letting
-        # the LLM choose to run tools in background. This caused agents to lose
-        # track of tool results (returned as side-channel notifications instead
-        # of tool_result messages), leading to confusion loops and wasted calls.
-        #
-        # Background execution is still available via the explicit background_task
-        # tool — the agent must consciously choose to use it.
-        #
-        # The _background flag is still handled in _handle_tool_calls() for
-        # backward compatibility if an LLM somehow sends it, but it's no longer
-        # advertised in tool schemas.
+        # 3. Combine all tools
+        all_tools = base_tools + provider_tools
+
+        # NOTE: _background parameter injection was removed.
+        # Tools run synchronously. Background execution is available
+        # via the explicit background_task tool if needed.
 
         return all_tools
 
