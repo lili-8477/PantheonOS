@@ -420,6 +420,7 @@ class LocalProvider(ToolProvider):
         if hasattr(self.toolset, "streaming_mode"):
             self.toolset.streaming_mode = "local"
         self._tools_cache: Optional[list[ToolInfo]] = None
+        self.tools_include: Optional[set[str]] = None  # Tool names to include (whitelist filter)
         self.deferred_tools: Optional[set[str]] = None
         self._deferred_cache: Optional[list[ToolInfo]] = None
         self._tool_descriptions: dict[

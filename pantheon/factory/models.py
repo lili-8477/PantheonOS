@@ -26,8 +26,6 @@ class AgentConfig:
     tags: List[str] = field(default_factory=list)
     think_tool: bool = False
     source_path: Optional[str] = None
-    include_tools: Optional[Dict[str, List[str]]] = None
-  # PANTHEON_WORKSPACE_PATCH:agent_config_include_tools
     include_tools: Optional[Dict[str, List[str]]] = None  # per-toolset tool whitelist
     deferred_tools: Optional[Dict[str, List[str]]] = None  # per-toolset deferred tools
     # disable_background removed — _background injection no longer happens for any agent
@@ -142,6 +140,5 @@ class TeamConfig:
             agents=agents,
             tags=data.get("tags", []),
             source_path=data.get("source_path"),
-            include_tools=data.get("include_tools"),
-        )  # PANTHEON_WORKSPACE_PATCH:from_dict_include_tools
+        )
 
