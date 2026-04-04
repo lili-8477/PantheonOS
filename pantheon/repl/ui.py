@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 
+from pantheon.utils.display import print_banner
 from .renderers import (
     DisplayMode,
     DisplayConfig,
@@ -17,8 +18,6 @@ from .renderers import (
     ToolResultRenderer,
 )
 from .utils import (
-    get_separator,
-    format_tool_name,
     format_relative_time,
     CLAUDE_BOX,
     OutputAdapter,
@@ -29,30 +28,12 @@ from .utils import (
 # Simple readline support for history
 try:
     import readline
-    import atexit
 
     READLINE_AVAILABLE = True
 except ImportError:
     READLINE_AVAILABLE = False
 
-
-from rich_pyfiglet import RichFiglet
-
-
-from rich.columns import Columns
 from rich.table import Table
-from rich import box
-
-
-def print_banner(console: Console, text: str = "PANTHEON"):
-    """Print ASCII banner with gradient colors"""
-    rich_fig = RichFiglet(
-        text,
-        font="ansi_regular",
-        colors=["blue", "purple", "#FFC0CB"],
-        horizontal=True,
-    )
-    console.print(rich_fig)
 
 
 def print_agent_message_modern_style(

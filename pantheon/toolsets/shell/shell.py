@@ -330,7 +330,7 @@ PANTHEON_ENV_EOF
 
         return new_shell_id
 
-    @tool
+    @tool(concurrent_safe=False)
     async def run_command(
         self,
         command: str | None = None,

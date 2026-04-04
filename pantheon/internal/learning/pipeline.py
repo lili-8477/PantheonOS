@@ -11,17 +11,12 @@ The pipeline manages the asynchronous learning workflow:
 from __future__ import annotations
 
 import asyncio
-import json
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 from pantheon.utils.log import logger
 from .reflector import Reflector
-from .skill_loader import load_skills_into_skillbook
-from .skill_manager import SkillManager, UpdateOperation
-from .skillbook import Skillbook
 from .skill_loader import load_skills_into_skillbook
 from .skill_manager import SkillManager, UpdateOperation
 from .skillbook import Skillbook
@@ -547,4 +542,3 @@ if __name__ != "__main__":
     from typing import TYPE_CHECKING
     if TYPE_CHECKING:
         from pantheon.team import PantheonTeam
-

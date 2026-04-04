@@ -89,6 +89,16 @@ async def create_agent(
 
                 task_toolset = TaskToolSet()
                 await agent.toolset(task_toolset)
+
+                # Apply deferred_tools if specified for this local toolset
+                _deferred = kwargs.get("deferred_tools", {})
+                if isinstance(_deferred, dict) and toolset_name in _deferred:
+                    provider = agent.providers.get(toolset_name)
+                    if provider and hasattr(provider, 'deferred_tools'):
+                        provider.deferred_tools = set(_deferred[toolset_name])
+                        # Force re-list to apply deferred separation
+                        provider._tools_cache = None
+
                 toolsets_added.append(toolset_name)
                 logger.debug(f"Agent '{name}': Added local TaskToolSet")
             except Exception as e:
@@ -185,6 +195,13 @@ async def create_agent(
             else:
                 # Specific server - filter by prefix
                 provider = MCPProvider.get_instance(unified_uri, filter_prefix=server_name)
+
+            # Apply deferred_tools if specified for this MCP server
+            _deferred = kwargs.get("deferred_tools", {})
+            if isinstance(_deferred, dict) and server_name in _deferred:
+                provider.deferred_tools = set(_deferred[server_name])
+                provider._tools_cache = None
+                provider._cache_time = 0
 
             await provider.initialize()
             await agent.mcp(server_name, provider)

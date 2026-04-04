@@ -55,6 +55,20 @@ Standard quality control workflow for single-cell data.
 
 ---
 
+### Standard Single-Cell Pipeline
+
+Script-first workflow for standard scRNA-seq analysis with reproducible outputs
+and minimal agent overhead.
+
+**Skill file**: [standard_sc_pipeline.md](./standard_sc_pipeline.md)
+
+**When to use**:
+- You want a fast end-to-end QC, clustering, and marker workflow
+- The task fits a linear script better than an exploratory notebook
+- You need clear project layout, execution, and reporting rules
+
+---
+
 ### Cell Type Annotation
 
 Approaches for annotating cell types in single-cell data.

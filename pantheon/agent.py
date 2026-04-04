@@ -336,6 +336,7 @@ class ResponseDetails(BaseModel):
     messages: list[dict]
     context_variables: dict
     execution_context_id: str | None = None  # NEW: Context ID for message filtering
+    result_type: str = "success"  # "success", "error_max_turns", "error_max_budget", "interrupted"
 
 
 class AgentResponse(BaseModel):
@@ -347,6 +348,7 @@ class AgentResponse(BaseModel):
     content: Any
     details: ResponseDetails | None
     interrupt: bool = False
+    result_type: str = "success"  # "success", "error_max_turns", "error_max_budget", "interrupted"
 
 
 class AgentTransfer(BaseModel):
@@ -575,6 +577,38 @@ class Agent:
         self._bg_manager = BackgroundTaskManager()
         self._tool_output_buffers: dict[str, list[str]] = {}
         self._register_bg_tools()
+        self._register_tool_search()
+
+    def _register_tool_search(self) -> None:
+        """Register tool_search function for discovering deferred tools."""
+        agent_ref = self
+
+        async def tool_search(query: str = "") -> dict:
+            """Search for additional tools not shown by default.
+
+            Some tools are deferred to reduce context size. Use this to discover them.
+            Call with an empty query to list all available deferred tools, or provide
+            a search string to filter by name or description.
+
+            Args:
+                query: Search string to match against tool names and descriptions.
+                       Empty string returns all deferred tools.
+
+            Returns:
+                dict with 'tools' list containing name and description for each match.
+            """
+            results = []
+            for provider_name, provider in agent_ref.providers.items():
+                if hasattr(provider, 'search_deferred_tools'):
+                    matches = await provider.search_deferred_tools(query)
+                    for m in matches:
+                        results.append({
+                            "name": f"{provider_name}__{m['name']}",
+                            "description": m.get("description", ""),
+                        })
+            return {"tools": results, "count": len(results)}
+
+        self._base_functions["tool_search"] = tool_search
 
     def _register_bg_tools(self) -> None:
         """Register background task management tools."""
@@ -1154,6 +1188,32 @@ class Agent:
 
         return functions
 
+    def _is_concurrent_safe(self, prefixed_name: str) -> bool:
+        """Check if a tool is safe to run concurrently with other tools.
+
+        Checks the _concurrent_safe attribute set by the @tool decorator.
+        Defaults to True for tools without the attribute (backward compatible).
+        """
+        # Check base functions
+        if prefixed_name in self._base_functions:
+            func = self._base_functions[prefixed_name]
+            return getattr(func, "_concurrent_safe", True)
+
+        # Check provider tools via their underlying ToolSet methods
+        if "__" in prefixed_name:
+            provider_name = prefixed_name.split("__", 1)[0]
+            tool_name = prefixed_name.split("__", 1)[1]
+            provider = self.providers.get(provider_name)
+            if provider:
+                from .providers import LocalProvider
+                if isinstance(provider, LocalProvider) and hasattr(provider, 'toolset'):
+                    method = getattr(provider.toolset, tool_name, None)
+                    if method and hasattr(method, '_concurrent_safe'):
+                        return method._concurrent_safe
+
+        # Default: concurrent safe
+        return True
+
     async def _handle_tool_calls(
         self,
         tool_calls: list,
@@ -1363,18 +1423,37 @@ class Agent:
 
             return tool_message
 
-        tasks = [
-            asyncio.create_task(_run_single_tool_call(call)) for call in tool_calls
-        ]
-        try:
-            tool_messages = await asyncio.gather(*tasks)
-        except Exception:
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            raise
+        # Partition tool calls by concurrency safety
+        concurrent_calls = []
+        exclusive_calls = []
+        for call in tool_calls:
+            func_name = call["function"]["name"]
+            if self._is_concurrent_safe(func_name):
+                concurrent_calls.append(call)
+            else:
+                exclusive_calls.append(call)
 
-        return tool_messages
+        results = []
+
+        # Run concurrent-safe tools in parallel
+        if concurrent_calls:
+            tasks = [
+                asyncio.create_task(_run_single_tool_call(call))
+                for call in concurrent_calls
+            ]
+            try:
+                results.extend(await asyncio.gather(*tasks))
+            except Exception:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                raise
+
+        # Run non-concurrent tools sequentially
+        for call in exclusive_calls:
+            results.append(await _run_single_tool_call(call))
+
+        return results
 
     async def _acompletion(
         self,
@@ -1711,6 +1790,7 @@ class Agent:
         process_step_message: Callable | None = None,
         check_stop: Callable | None = None,
         max_turns: int | float = float("inf"),
+        max_budget_usd: float | None = None,
         context_variables: dict | None = None,
         response_format: Any | None = None,
         tool_use: bool = True,
@@ -1800,6 +1880,9 @@ IMPORTANT: You are operating in a restricted workspace environment.
             if check_stop is not None and check_stop(chunk):
                 raise StopRunning()
 
+        run_cost = 0.0
+        result_type = "success"
+
         while len(history) - init_len < max_turns:
             # Build history for LLM (with ephemeral message if TaskToolSet present)
             if task_toolset:
@@ -1849,10 +1932,21 @@ IMPORTANT: You are operating in a restricted workspace environment.
 
             message["agent_name"] = self.name
 
+            # Accumulate cost for budget enforcement
+            run_cost += message.get("_metadata", {}).get("current_cost", 0.0)
+
             history.append(message)
             self.events_queue.put_nowait(message)
             if process_step_message:
                 await run_func(process_step_message, message)
+
+            # Check budget constraint
+            if max_budget_usd is not None and run_cost > max_budget_usd:
+                logger.warning(
+                    f"Agent '{self.name}': Budget exceeded (${run_cost:.4f} > ${max_budget_usd:.4f}). Stopping."
+                )
+                result_type = "error_max_budget"
+                break
 
             # If no tool calls, stop conversation
             # BUT: If we have reasoning content WITHOUT actual content, continue to let the model output its conclusion/tool calls
@@ -1935,12 +2029,18 @@ IMPORTANT: You are operating in a restricted workspace environment.
 
             # Handle notify_user interrupt - break loop to return control to user
             if interrupt_message:
+                result_type = "interrupted"
                 break
+        else:
+            # Loop ended naturally (max_turns exceeded) — only set if not already set by budget
+            if result_type == "success":
+                result_type = "error_max_turns"
 
         return ResponseDetails(
             messages=history[init_len:],
             context_variables=context_variables,
             execution_context_id=execution_context_id,  # NEW: Pass context ID through response
+            result_type=result_type,
         )
 
     async def _input_to_openai_messages(
@@ -2186,6 +2286,7 @@ IMPORTANT: You are operating in a restricted workspace environment.
         use_memory: bool | None = None,
         update_memory: bool = True,
         tool_timeout: int | None = None,
+        max_budget_usd: float | None = None,
         model: str | list[str] | None = None,
         allow_transfer: bool = True,
         execution_context_id: str | None = None,
@@ -2289,6 +2390,7 @@ IMPORTANT: You are operating in a restricted workspace environment.
                 messages=exec_context.conversation_history,
                 response_format=response_format_to_use,
                 tool_use=tool_use,
+                max_budget_usd=max_budget_usd,
                 context_variables=exec_context.context_variables,
                 process_chunk=_process_chunk,
                 process_step_message=_process_step_message,
@@ -2336,6 +2438,7 @@ IMPORTANT: You are operating in a restricted workspace environment.
                 agent_name=self.name,
                 content=content,
                 details=run_result,
+                result_type=run_result.result_type,
             )
 
     # ===== Event-Driven Loop =====

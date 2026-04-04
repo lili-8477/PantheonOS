@@ -1,6 +1,5 @@
 import asyncio
 import os
-import re
 from pathlib import Path
 from typing import Literal
 import tempfile
@@ -810,7 +809,7 @@ class FileManagerToolSet(FileManagerToolSetBase):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    @tool
+    @tool(concurrent_safe=False)
     async def write_file(
         self,
         file_path: str,
@@ -861,7 +860,7 @@ class FileManagerToolSet(FileManagerToolSetBase):
             logger.error(f"write_file failed for {file_path}: {exc}")
             return {"success": False, "error": str(exc)}
 
-    @tool
+    @tool(concurrent_safe=False)
     async def update_file(
         self,
         file_path: str,
@@ -1260,7 +1259,7 @@ class FileManagerToolSet(FileManagerToolSetBase):
     # Patch Application Tools
     # =========================================================================
 
-    @tool
+    @tool(concurrent_safe=False)
     async def apply_patch(
         self,
         patch: str,
@@ -1565,7 +1564,7 @@ class FileManagerToolSet(FileManagerToolSetBase):
         
         return result
 
-    @tool
+    @tool(concurrent_safe=False)
     async def generate_image(
         self,
         prompt: str,

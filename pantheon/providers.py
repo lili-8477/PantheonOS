@@ -6,13 +6,11 @@ This module provides implementations for different tool sources:
 - ToolSetProvider: For remote Pantheon ToolSets (with session isolation)
 """
 
-import asyncio
 import json
 from threading import Lock
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from fastmcp import Client
-from fastmcp.client.messages import MessageHandler
 
 from .agent import ToolInfo, ToolProvider
 from .endpoint.toolset_proxy import ToolsetProxy
@@ -22,6 +20,24 @@ from .utils.log import logger
 # Constants for special parameters
 _CTX_VARS_NAME = "context_variables"
 _SKIP_PARAMS = [_CTX_VARS_NAME, "_call_agent"]
+
+
+def _build_tool_info_from_description_dict(tool: dict) -> ToolInfo:
+    """Convert a serialized funcdesc payload into ToolInfo."""
+    from funcdesc.desc import Description
+
+    from .utils.misc import desc_to_openai_dict
+
+    desc = Description.from_json(json.dumps(tool))
+    function_schema = desc_to_openai_dict(
+        desc, skip_params=[], litellm_mode=True
+    ).get("function", {})
+
+    return ToolInfo(
+        name=desc.name,
+        description=desc.doc or "",
+        inputSchema=function_schema,
+    )
 
 
 class MCPProvider(ToolProvider):
@@ -47,6 +63,8 @@ class MCPProvider(ToolProvider):
         self._client: Optional[Client] = None
         self._tools_cache: Optional[list[ToolInfo]] = None
         self._cache_time: float = 0
+        self.deferred_tools: Optional[set[str]] = None
+        self._deferred_cache: Optional[list[ToolInfo]] = None
 
     @classmethod
     def get_instance(cls, uri: str, filter_prefix: str | None = None) -> "MCPProvider":
@@ -258,6 +276,16 @@ class MCPProvider(ToolProvider):
                     )
                     tool_infos.append(tool_info)
 
+                # Separate deferred tools (before caching)
+                if self.deferred_tools:
+                    self._deferred_cache = [t for t in tool_infos if t.name in self.deferred_tools]
+                    tool_infos = [t for t in tool_infos if t.name not in self.deferred_tools]
+                    if self._deferred_cache:
+                        logger.debug(
+                            f"MCPProvider '{self.uri}': deferred {len(self._deferred_cache)} tools: "
+                            f"{[t.name for t in self._deferred_cache]}"
+                        )
+
                 # Update cache with timestamp
                 self._tools_cache = tool_infos
                 self._cache_time = now
@@ -271,6 +299,35 @@ class MCPProvider(ToolProvider):
         except Exception as e:
             logger.error(f"Failed to list tools from MCP server '{self.uri}': {e}")
             raise
+
+    async def search_deferred_tools(self, query: str = "") -> list:
+        """Search deferred tools by name or description.
+
+        Args:
+            query: Search string to match against tool names and descriptions.
+                   Empty string returns all deferred tools.
+
+        Returns:
+            List of dicts with 'name' and 'description' for matching deferred tools.
+        """
+        if not self._deferred_cache:
+            # Force load if not cached
+            self._tools_cache = None
+            self._cache_time = 0
+            await self.list_tools()
+
+        if not self._deferred_cache:
+            return []
+
+        if not query:
+            return [{"name": t.name, "description": t.description} for t in self._deferred_cache]
+
+        query_lower = query.lower()
+        return [
+            {"name": t.name, "description": t.description}
+            for t in self._deferred_cache
+            if query_lower in t.name.lower() or query_lower in (t.description or "").lower()
+        ]
 
     async def call_tool(self, name: str, args: dict) -> Any:
         """Call a tool on the MCP server."""
@@ -363,6 +420,8 @@ class LocalProvider(ToolProvider):
         if hasattr(self.toolset, "streaming_mode"):
             self.toolset.streaming_mode = "local"
         self._tools_cache: Optional[list[ToolInfo]] = None
+        self.deferred_tools: Optional[set[str]] = None
+        self._deferred_cache: Optional[list[ToolInfo]] = None
         self._tool_descriptions: dict[
             str, dict
         ] = {}  # name -> tool_desc for parameter filtering
@@ -396,11 +455,6 @@ class LocalProvider(ToolProvider):
             return self._tools_cache
 
         try:
-            import json
-            from funcdesc.desc import Description
-
-            from .utils.misc import desc_to_openai_dict
-
             # Get tools from the local toolset instance
             tools_response = await self.toolset.list_tools()
             tools_list = tools_response.get("tools", [])
@@ -409,30 +463,22 @@ class LocalProvider(ToolProvider):
             tool_infos = []
             for tool in tools_list:
                 try:
-                    # tool is already a dict serialized from Description.to_json()
-                    # Reconstruct Description object from the JSON dict
-                    tool_json = json.dumps(tool)
-                    desc = Description.from_json(tool_json)
-
-                    # Generate OpenAI format schema using desc_to_openai_dict
-                    oai_dict = desc_to_openai_dict(
-                        desc, skip_params=[], litellm_mode=True
-                    )
-
-                    # Extract the "function" part (without "type": "function")
-                    function_schema = oai_dict.get("function", {})
-
-                    tool_info = ToolInfo(
-                        name=desc.name,
-                        description=desc.doc or "",
-                        inputSchema=function_schema,  # Store "function" part directly
-                    )
-                    tool_infos.append(tool_info)
+                    tool_infos.append(_build_tool_info_from_description_dict(tool))
                 except Exception as e:
                     logger.warning(
                         f"Failed to convert local ToolSet tool '{tool.get('name', 'unknown')}': {e}"
                     )
                     # Skip this tool instead of adding a fake ToolInfo
+
+            # Separate deferred tools (before include filter, before caching)
+            if self.deferred_tools:
+                self._deferred_cache = [t for t in tool_infos if t.name in self.deferred_tools]
+                tool_infos = [t for t in tool_infos if t.name not in self.deferred_tools]
+                if self._deferred_cache:
+                    logger.debug(
+                        f"LocalProvider[{self.toolset_name}]: deferred {len(self._deferred_cache)} tools: "
+                        f"{[t.name for t in self._deferred_cache]}"
+                    )
 
             # Filter tools if include list is set
             if self.tools_include:
@@ -450,6 +496,34 @@ class LocalProvider(ToolProvider):
         except Exception as e:
             logger.error(f"Failed to list tools from local ToolSet: {e}")
             raise
+
+    async def search_deferred_tools(self, query: str = "") -> list:
+        """Search deferred tools by name or description.
+
+        Args:
+            query: Search string to match against tool names and descriptions.
+                   Empty string returns all deferred tools.
+
+        Returns:
+            List of dicts with 'name' and 'description' for matching deferred tools.
+        """
+        if not self._deferred_cache:
+            # Force load if not cached
+            self._tools_cache = None
+            await self.list_tools()
+
+        if not self._deferred_cache:
+            return []
+
+        if not query:
+            return [{"name": t.name, "description": t.description} for t in self._deferred_cache]
+
+        query_lower = query.lower()
+        return [
+            {"name": t.name, "description": t.description}
+            for t in self._deferred_cache
+            if query_lower in t.name.lower() or query_lower in (t.description or "").lower()
+        ]
 
     async def call_tool(self, name: str, args: dict) -> Any:
         """Call a tool on the local ToolSet instance"""
@@ -535,10 +609,6 @@ class ToolSetProvider(ToolProvider):
             return self._tools_cache
 
         try:
-            import json
-            from funcdesc.desc import Description
-            from .utils.misc import desc_to_openai_dict
-
             # Get tools from the toolset proxy
             # ToolSet.list_tools() returns: {"success": True, "tools": [...]}
             tools_response = await self.toolset_proxy.list_tools()
@@ -548,25 +618,7 @@ class ToolSetProvider(ToolProvider):
             tool_infos = []
             for tool in tools_list:
                 try:
-                    # tool is already a dict serialized from Description.to_json()
-                    # Reconstruct Description object from the JSON dict
-                    tool_json = json.dumps(tool)
-                    desc = Description.from_json(tool_json)
-
-                    # Generate OpenAI format schema using desc_to_openai_dict
-                    oai_dict = desc_to_openai_dict(
-                        desc, skip_params=[], litellm_mode=True
-                    )
-
-                    # Extract the "function" part (without "type": "function")
-                    function_schema = oai_dict.get("function", {})
-
-                    tool_info = ToolInfo(
-                        name=desc.name,
-                        description=desc.doc or "",
-                        inputSchema=function_schema,  # Store "function" part directly
-                    )
-                    tool_infos.append(tool_info)
+                    tool_infos.append(_build_tool_info_from_description_dict(tool))
                 except Exception as e:
                     logger.warning(
                         f"Failed to convert ToolSet tool '{tool.get('name', 'unknown')}': {e}"

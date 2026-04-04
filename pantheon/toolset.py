@@ -107,7 +107,7 @@ def parse_tool_desc(func: Callable) -> dict:
     return tool_dict
 
 
-def tool(func: Callable | None = None, *, exclude: bool = False, **kwargs):
+def tool(func: Callable | None = None, *, exclude: bool = False, concurrent_safe: bool = True, **kwargs):
     """
     Mark tool in a ToolSet class with automatic context_variables and session_id injection.
 
@@ -127,6 +127,10 @@ def tool(func: Callable | None = None, *, exclude: bool = False, **kwargs):
             If True, this tool will not be exposed to LLM agents.
             Useful for tools that are only meant for frontend/API use.
             Default False
+        concurrent_safe: bool
+            If False, this tool will be executed sequentially (not in parallel)
+            when multiple tools are called in the same turn. Use for write operations
+            that could cause data races. Default True.
         **kwargs: Additional parameters for tool execution
 
     Example (explicit parameter):
@@ -142,7 +146,7 @@ def tool(func: Callable | None = None, *, exclude: bool = False, **kwargs):
             session_id = ctx.get('session_id')
     """
     if func is None:
-        return partial(tool, exclude=exclude, **kwargs)
+        return partial(tool, exclude=exclude, concurrent_safe=concurrent_safe, **kwargs)
 
     # Check function signature for context parameter names
     sig = inspect.signature(func)
@@ -199,6 +203,7 @@ def tool(func: Callable | None = None, *, exclude: bool = False, **kwargs):
     # Mark as tool and keep reference to original function
     wrapper._is_tool = True
     wrapper._exclude = exclude
+    wrapper._concurrent_safe = concurrent_safe
     wrapper._tool_params = kwargs
     tool_desc = None
     try:
