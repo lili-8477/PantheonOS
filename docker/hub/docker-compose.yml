@@ -77,8 +77,20 @@ services:
       - pantheon-network
 
   # ─── User Pantheon Containers (added dynamically) ─────────────────────────
-  # Each user is added via ./scripts/add-user.sh which creates a container
-  # using the template below. Example for reference:
+  # Each user is added via ./scripts/add-user.sh which creates a container.
+  #
+  # Usage:
+  #   ./scripts/add-user.sh alice                              # basic
+  #   ./scripts/add-user.sh alice --data /home/alice/my-data   # with data mount
+  #   ./scripts/add-user.sh alice --data /data/project1:/workspace/projects/p1
+  #   ./scripts/add-user.sh alice --image pantheon-agents-r:latest
+  #
+  # Data mounts:
+  #   --data /path              → /workspace/data/<dirname>
+  #   --data /path:/target      → explicit mount point
+  #   data/shared/ (auto)       → /workspace/shared (read-only, all users)
+  #
+  # Example container for reference:
   #
   # pantheon-alice:
   #   image: nanguage/pantheon-agents:latest
@@ -95,6 +107,8 @@ services:
   #     - ./workspaces/alice/.env
   #   volumes:
   #     - ./workspaces/alice:/workspace
+  #     - ./data/shared:/workspace/shared:ro
+  #     - /home/alice/my-data:/workspace/data/my-data
   #   working_dir: /workspace
   #   depends_on:
   #     nats:
