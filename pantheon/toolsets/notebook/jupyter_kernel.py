@@ -754,17 +754,27 @@ class JupyterKernelToolSet(ToolSet):
 
     @tool
     async def get_variables(self, session_id: str) -> dict:
-        """Get variables from kernel session using %whos magic command"""
+        """Get variables from kernel session.
+
+        Uses %whos for Python (IPython) kernels and a custom R snippet for IR kernels.
+        Returns variables as a dict keyed by name, each value includes a 'name' field
+        for frontend compatibility.
+        """
         if session_id not in self.sessions:
             return {"success": False, "error": f"Session {session_id} not found"}
 
-        # Use standard IPython %whos magic command - the only standard way
-        # This matches VS Code notebook and JupyterLab behavior exactly
-        # Note: %whos excludes private variables by design (standard behavior)
+        session = self.sessions[session_id]
+        is_r = session.kernel_spec == "ir"
+
+        if is_r:
+            return await self._get_variables_r(session_id)
+        return await self._get_variables_python(session_id)
+
+    async def _get_variables_python(self, session_id: str) -> dict:
+        """Get variables from Python/IPython kernel using %whos magic."""
         variables_code = "%whos"
 
         try:
-            # Execute using standard magic command with system metadata
             result = await self.execute_request(
                 variables_code,
                 session_id,
@@ -772,7 +782,6 @@ class JupyterKernelToolSet(ToolSet):
                 execution_metadata={"operated_by": "system"},
             )
 
-            # Parse %whos output from the result
             variables = {}
             for output in result.get("outputs", []):
                 if (
@@ -780,11 +789,8 @@ class JupyterKernelToolSet(ToolSet):
                     and output.get("name") == "stdout"
                 ):
                     whos_output = output.get("text", "")
-
-                    # Parse standard %whos output format
                     lines = whos_output.strip().split("\n")
 
-                    # Skip header lines and find data
                     for line in lines:
                         line = line.strip()
                         if (
@@ -793,14 +799,15 @@ class JupyterKernelToolSet(ToolSet):
                             and not line.startswith("---")
                             and not line.startswith("Interactive")
                         ):
-                            parts = line.split(None, 3)  # Split into max 4 parts
-                            if len(parts) >= 3:
+                            parts = line.split(None, 3)
+                            if len(parts) >= 2:
                                 name = parts[0]
-                                var_type = parts[1]
-                                size = parts[2] if len(parts) > 2 else "-"
+                                var_type = parts[1] if len(parts) > 1 else ""
+                                size = parts[2] if len(parts) > 2 else ""
                                 value = parts[3] if len(parts) > 3 else ""
 
                                 variables[name] = {
+                                    "name": name,
                                     "type": var_type,
                                     "size": size,
                                     "value": value,
@@ -815,6 +822,75 @@ class JupyterKernelToolSet(ToolSet):
 
         except Exception as e:
             logger.error(f"Failed to get variables for session {session_id}: {e}")
+            return {"success": False, "error": str(e)}
+
+    # R code to list user variables as JSON lines: name\tclass\tsize\trepr
+    _R_VARIABLES_CODE = r'''
+local({
+  envs <- ls(envir = .GlobalEnv)
+  if (length(envs) == 0) { cat("__EMPTY__\n"); return(invisible(NULL)) }
+  for (nm in envs) {
+    obj <- tryCatch(get(nm, envir = .GlobalEnv), error = function(e) NULL)
+    if (is.null(obj) && !exists(nm, envir = .GlobalEnv)) next
+    cls <- paste(class(obj), collapse = ", ")
+    sz <- tryCatch({
+      d <- dim(obj)
+      if (!is.null(d)) paste(d, collapse = " x ")
+      else as.character(length(obj))
+    }, error = function(e) "?")
+    repr <- tryCatch(
+      paste(capture.output(str(obj, max.level = 1, give.attr = FALSE))[1], collapse = ""),
+      error = function(e) ""
+    )
+    cat(nm, "\t", cls, "\t", sz, "\t", repr, "\n", sep = "")
+  }
+})
+'''
+
+    async def _get_variables_r(self, session_id: str) -> dict:
+        """Get variables from R (IR) kernel."""
+        try:
+            result = await self.execute_request(
+                self._R_VARIABLES_CODE,
+                session_id,
+                silent=False,
+                store_history=False,
+                execution_metadata={"operated_by": "system"},
+            )
+
+            variables = {}
+            for output in result.get("outputs", []):
+                if (
+                    output.get("output_type") == "stream"
+                    and output.get("name") == "stdout"
+                ):
+                    text = output.get("text", "")
+                    if "__EMPTY__" in text:
+                        break
+                    for line in text.strip().split("\n"):
+                        parts = line.split("\t", 3)
+                        if len(parts) >= 2:
+                            name = parts[0].strip()
+                            var_type = parts[1].strip() if len(parts) > 1 else ""
+                            size = parts[2].strip() if len(parts) > 2 else ""
+                            repr_val = parts[3].strip() if len(parts) > 3 else ""
+                            if name:
+                                variables[name] = {
+                                    "name": name,
+                                    "type": var_type,
+                                    "size": size,
+                                    "value": repr_val,
+                                }
+
+            return {
+                "success": True,
+                "variables": variables,
+                "session_id": session_id,
+                "method": "r_ls_str",
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get R variables for session {session_id}: {e}")
             return {"success": False, "error": str(e)}
 
     @tool
