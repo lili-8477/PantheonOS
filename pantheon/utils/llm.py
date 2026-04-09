@@ -792,9 +792,12 @@ def micro_compact(messages: list[dict]) -> list[dict]:
         role = msg.get("role", "")
         content = msg.get("content", "")
 
-        # 1. Skip empty messages
+        # 1. Skip empty messages (but keep assistant messages with tool_calls)
         if not content and role not in ("tool",):
-            continue
+            if role == "assistant" and msg.get("tool_calls"):
+                pass  # Keep assistant messages that have tool_calls even if content is empty
+            else:
+                continue
 
         # 2. Deduplicate system reminders
         if role == "system":

@@ -358,14 +358,22 @@ class JupyterKernelToolSet(ToolSet):
             if kernel_session_id is None:
                 kernel_session_id = str(uuid.uuid4())
 
-            # Try to create kernel manager with the specified kernel, fallback to default
+            # Create kernel manager with the specified kernel
+            # Do NOT silently fall back — if the user requested a specific kernel
+            # (e.g., "ir" for R), falling back to Python causes silent failures
+            # where R code hits a Python kernel and gets SyntaxErrors.
             try:
                 km = AsyncKernelManager(kernel_name=kernel_spec)
             except Exception as e:
-                logger.warning(
-                    f"Kernel '{kernel_spec}' not available, using default: {e}"
-                )
-                # Use default kernel (no kernel_name specified)
+                if kernel_spec != "python3":
+                    error_msg = (
+                        f"Kernel '{kernel_spec}' is not available: {e}. "
+                        f"To use R notebooks, install IRkernel: "
+                        f"R -e \"install.packages('IRkernel'); IRkernel::installspec()\""
+                    )
+                    logger.error(error_msg)
+                    return {"success": False, "error": error_msg}
+                # Only fall back for the default python3 kernel
                 km = AsyncKernelManager()
 
             # Start kernel in specified working directory with Pantheon context

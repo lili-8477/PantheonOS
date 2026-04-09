@@ -204,6 +204,10 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && mv /root/.local/bin/uv /usr/local/bin/uv
 
+# Install IRkernel so Jupyter can run R notebooks natively
+RUN R -e "install.packages('IRkernel', repos='https://cloud.r-project.org', Ncpus=parallel::detectCores())" && \
+    R -e "IRkernel::installspec(user = FALSE)"
+
 WORKDIR /app
 
 # ============================================

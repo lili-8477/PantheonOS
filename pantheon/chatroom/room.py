@@ -761,9 +761,9 @@ class ChatRoom(ToolSet):
             The result from the toolset method call.
         """
         try:
-            # Add debug logging
-            logger.debug(
-                f"chatroom proxy_toolset: method_name={method_name}, toolset_name={toolset_name}, args={args}"
+            # Log proxy calls for debugging frontend-backend notebook issues
+            logger.info(
+                f"chatroom proxy_toolset: method_name={method_name}, toolset_name={toolset_name}"
             )
 
             # Inject workdir from project metadata if session is in isolated mode
@@ -793,6 +793,14 @@ class ChatRoom(ToolSet):
                                 ctx.pop("workdir", None)
                 except Exception as e:
                     logger.debug(f"Could not inject workdir for session {session_id}: {e}")
+
+            # Inject session_id into args so the @tool decorator can set client_id
+            # in context_variables. Without this, frontend notebook calls get
+            # session_id="default" and can't find/reuse agent kernel contexts.
+            if session_id:
+                args = args or {}
+                if "session_id" not in args:
+                    args["session_id"] = session_id
 
             # Use unified endpoint call method
             result = await self._call_endpoint_method(

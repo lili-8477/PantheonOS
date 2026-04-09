@@ -18,6 +18,6 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     libhdf5-dev libgsl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install IRkernel so R notebooks work
-RUN R -e "install.packages('IRkernel', repos='https://cloud.r-project.org')" && \
+# Re-install IRkernel for upgraded R 4.5.x (base image has it for stock R)
+RUN R -e "install.packages('IRkernel', repos='https://cloud.r-project.org', Ncpus=parallel::detectCores())" && \
     R -e "IRkernel::installspec(user = FALSE)"

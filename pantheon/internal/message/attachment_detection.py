@@ -43,6 +43,8 @@ COMMON_FILE_EXTENSIONS = {
     "js": "text/javascript",
     "java": "text/x-java",
     "cpp": "text/x-c++src",
+    # Notebooks
+    "ipynb": "application/x-ipynb+json",
     # Other
     "zip": "application/zip",
     "tar": "application/x-tar",

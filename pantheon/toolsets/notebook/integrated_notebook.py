@@ -225,9 +225,13 @@ class IntegratedNotebookToolSet(ToolSet):
         if key not in self.notebook_contexts:
             logger.info(f"Creating new context: {notebook_path} @ {session_id}")
 
+            from .language_detection import language_from_kernel_name, kernel_name_for_language
+
             # 1. Ensure notebook file exists
             read_result = await self.notebook_contents.read_notebook(notebook_path)
             notebook_file_is_new = False
+            detected_kernel = "python3"
+
             if not read_result["success"]:
                 create_result = await self.notebook_contents.create_notebook(
                     notebook_path, "New Notebook"
@@ -237,9 +241,17 @@ class IntegratedNotebookToolSet(ToolSet):
                         f"Failed to create notebook: {create_result['error']}"
                     )
                 notebook_file_is_new = True
+            else:
+                # Read kernel spec from existing notebook metadata
+                metadata = read_result.get("notebook", {}).get("metadata", {})
+                kernelspec = metadata.get("kernelspec", {})
+                nb_kernel_name = kernelspec.get("name", "python3")
+                if nb_kernel_name in ("ir",):
+                    detected_kernel = "ir"
+                    logger.info(f"Detected R kernel from notebook metadata: {notebook_path}")
 
-            # 2. Create kernel session (internal)
-            kernel_result = await self.kernel_toolset.create_session("python3")
+            # 2. Create kernel session matching the notebook's language
+            kernel_result = await self.kernel_toolset.create_session(detected_kernel)
             if not kernel_result["success"]:
                 raise Exception(f"Failed to create kernel: {kernel_result['error']}")
 
@@ -250,7 +262,7 @@ class IntegratedNotebookToolSet(ToolSet):
                 kernel_session_id=kernel_result["session_id"],
                 created_at=datetime.now().isoformat(),
                 notebook_title="New Notebook",
-                kernel_spec="python3",
+                kernel_spec=detected_kernel,
                 notebook_is_new=notebook_file_is_new,
             )
 
@@ -396,29 +408,33 @@ class IntegratedNotebookToolSet(ToolSet):
             else:
                 code = ""
 
-            # Detect R magic and auto-initialize rpy2 if needed
+            # Handle R code execution based on kernel type
             code_stripped = code.strip()
-            needs_rpy2 = (
-                code_stripped.startswith("%%R") or
-                code_stripped.startswith("%R ") or
-                code_stripped.startswith("%R\n") or
-                "\n%R " in code
-            )
+            is_r_kernel = context.kernel_spec == "ir"
 
-            if needs_rpy2 and not context.rpy2_initialized:
-                logger.info(f"Detected R magic, initializing rpy2 for session {context.kernel_session_id[:8]}")
-                init_result = await self.kernel_toolset.execute_request(
-                    RPY2_INIT_CODE,
-                    context.kernel_session_id,
-                    silent=True,
-                    store_history=False,
-                    execution_metadata={"operated_by": "system"},
+            if not is_r_kernel:
+                # Python kernel — detect R magic and auto-initialize rpy2 if needed
+                has_r_magic = (
+                    code_stripped.startswith("%%R") or
+                    code_stripped.startswith("%R ") or
+                    code_stripped.startswith("%R\n") or
+                    "\n%R " in code
                 )
-                if init_result.get("success"):
-                    context.rpy2_initialized = True
-                    logger.info("rpy2 initialized successfully")
-                else:
-                    logger.warning(f"rpy2 initialization failed: {init_result.get('error')}")
+
+                if has_r_magic and not context.rpy2_initialized:
+                    logger.info(f"Detected R magic, initializing rpy2 for session {context.kernel_session_id[:8]}")
+                    init_result = await self.kernel_toolset.execute_request(
+                        RPY2_INIT_CODE,
+                        context.kernel_session_id,
+                        silent=True,
+                        store_history=False,
+                        execution_metadata={"operated_by": "system"},
+                    )
+                    if init_result.get("success"):
+                        context.rpy2_initialized = True
+                        logger.info("rpy2 initialized successfully")
+                    else:
+                        logger.warning(f"rpy2 initialization failed: {init_result.get('error')}")
 
             # Execute with cell_id (not cell_index for stability)
             exec_result = await self._execute_and_update(
@@ -442,13 +458,15 @@ class IntegratedNotebookToolSet(ToolSet):
     # Core Tools
     # ═══════════════════════════════════════════════════════════
 
-    @tool(exclude=True)
-    async def create_notebook(self, notebook_path: str) -> dict:
+    @tool
+    async def create_notebook(self, notebook_path: str, language: str = None) -> dict:
         """
         Create or open a notebook file.
 
         Args:
             notebook_path: Path to notebook file
+            language: "python" or "r". Determines the kernel and language metadata.
+                     Defaults to "python" if not specified.
 
         Returns:
             dict with:
@@ -468,9 +486,9 @@ class IntegratedNotebookToolSet(ToolSet):
                 action = "opened"
                 logger.debug(f"Notebook already exists: {notebook_path}")
             else:
-                # Create new notebook
+                # Create new notebook with language-aware kernel spec
                 create_result = await self.notebook_contents.create_notebook(
-                    notebook_path, "New Notebook"
+                    notebook_path, "New Notebook", language=language,
                 )
                 if not create_result["success"]:
                     return {
@@ -478,7 +496,7 @@ class IntegratedNotebookToolSet(ToolSet):
                         "error": f"Failed to create notebook: {create_result.get('error', 'Unknown error')}",
                     }
                 action = "created"
-                logger.info(f"Created new notebook: {notebook_path}")
+                logger.info(f"Created new notebook: {notebook_path} (language={language})")
 
             result = {
                 "success": True,
@@ -498,7 +516,7 @@ class IntegratedNotebookToolSet(ToolSet):
             logger.error(f"create_notebook failed: {e}")
             return {"success": False, "error": str(e)}
 
-    @tool(exclude=True)
+    @tool
     async def execute_cell(
         self,
         notebook_path: str,
@@ -543,7 +561,7 @@ class IntegratedNotebookToolSet(ToolSet):
 
         return await self._execute_cell_internal(notebook_path, cell_id, session_id)
 
-    @tool(exclude=True)
+    @tool
     async def add_cell(
         self,
         notebook_path: str,
@@ -629,6 +647,11 @@ class IntegratedNotebookToolSet(ToolSet):
             )
             exec_result.pop("notebook_path", None)
             result["execution"] = exec_result
+
+            # Propagate execution errors to top level so the agent sees success=false
+            if not exec_result.get("success", True):
+                result["success"] = False
+                result["error"] = exec_result.get("error", "Cell execution failed")
 
         return result
 
@@ -757,6 +780,11 @@ class IntegratedNotebookToolSet(ToolSet):
             exec_result.pop("notebook_path", None)
             result["execution"] = exec_result
 
+            # Propagate execution errors to top level
+            if not exec_result.get("success", True):
+                result["success"] = False
+                result["error"] = exec_result.get("error", "Cell execution failed")
+
         return result
 
     @tool(exclude=True)
@@ -852,7 +880,7 @@ class IntegratedNotebookToolSet(ToolSet):
                 logger.error(f"move_cell failed: {e}")
                 return {"success": False, "error": str(e)}
 
-    @tool(exclude=True)
+    @tool
     async def read_cells(
         self,
         notebook_path: str,
@@ -996,10 +1024,11 @@ class IntegratedNotebookToolSet(ToolSet):
 
             # Add language for code cells
             if cell.get("cell_type") == "code":
-                # Get language from notebook metadata or default to python
-                metadata = notebook.get("metadata", {})
-                language_info = metadata.get("language_info", {})
-                cell_info["language"] = language_info.get("name", "python")
+                from .language_detection import detect_notebook_language
+
+                cell_info["language"] = detect_notebook_language(
+                    notebook.get("metadata", {})
+                )
 
             # Include either preview or full content
             if include_details:
@@ -1106,8 +1135,9 @@ class IntegratedNotebookToolSet(ToolSet):
         self,
         notebook_path: str,
         action: Literal[
-            "restart", "interrupt", "status", "variables", "shutdown", "delete"
+            "restart", "interrupt", "status", "variables", "shutdown", "delete", "switch"
         ],
+        kernel_spec: Optional[str] = None,
     ) -> dict:
         """
         Manage kernel for a notebook (unified kernel operations)
@@ -1125,6 +1155,7 @@ class IntegratedNotebookToolSet(ToolSet):
                           to free memory. Running notebooks with loaded data (e.g., AnnData)
                           consume significant memory. Too many open notebooks can exhaust memory.
                 - "delete": Delete context completely (shutdown kernel + remove from memory)
+                - "switch": Switch kernel implementation (e.g. "python3" or "ir")
 
         Returns:
             dict with success status and action-specific data
@@ -1161,6 +1192,12 @@ class IntegratedNotebookToolSet(ToolSet):
                     "action": "restart",
                     "notebook_path": notebook_path,
                     "kernel_session_id": context.kernel_session_id,
+                    "kernel_spec": context.kernel_spec,
+                    "status": (
+                        self.kernel_toolset.sessions[context.kernel_session_id].status.value
+                        if context.kernel_session_id in self.kernel_toolset.sessions
+                        else "idle"
+                    ),
                 }
 
             elif action == "interrupt":
@@ -1223,6 +1260,83 @@ class IntegratedNotebookToolSet(ToolSet):
                     "notebook_path": notebook_path,
                     "kernel_session_id": context.kernel_session_id,
                     "message": "Kernel shutdown, context preserved (can restart)",
+                }
+
+            elif action == "switch":
+                if not kernel_spec:
+                    return {
+                        "success": False,
+                        "error": "kernel_spec is required for switch",
+                        "action": "switch",
+                    }
+
+                normalized_kernel = kernel_spec.strip().lower()
+                if normalized_kernel not in {"python3", "ir"}:
+                    return {
+                        "success": False,
+                        "error": f"Unsupported kernel_spec '{kernel_spec}'. Use 'python3' or 'ir'.",
+                        "action": "switch",
+                    }
+
+                target_language = "r" if normalized_kernel == "ir" else "python"
+
+                if context.kernel_spec == normalized_kernel:
+                    status = self.kernel_toolset.sessions.get(context.kernel_session_id)
+                    return {
+                        "success": True,
+                        "action": "switch",
+                        "notebook_path": notebook_path,
+                        "kernel_session_id": context.kernel_session_id,
+                        "kernel_spec": context.kernel_spec,
+                        "kernel_status": status.status.value if status else "dead",
+                        "message": f"Kernel already set to {normalized_kernel}",
+                    }
+
+                metadata_result = await self.notebook_contents.update_notebook_kernel(
+                    notebook_path, language=target_language
+                )
+                if not metadata_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": metadata_result.get("error", "Failed to update notebook metadata"),
+                        "action": "switch",
+                    }
+
+                old_kernel_session_id = context.kernel_session_id
+                if old_kernel_session_id in self.kernel_toolset.sessions:
+                    shutdown_result = await self.kernel_toolset.shutdown_session(
+                        old_kernel_session_id
+                    )
+                    if not shutdown_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": shutdown_result.get("error", "Failed to shutdown existing kernel"),
+                            "action": "switch",
+                        }
+
+                create_result = await self.kernel_toolset.create_session(
+                    normalized_kernel, kernel_session_id=old_kernel_session_id
+                )
+                if not create_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": create_result.get("error", "Failed to create target kernel"),
+                        "action": "switch",
+                    }
+
+                context.kernel_spec = normalized_kernel
+                context.kernel_session_id = create_result["session_id"]
+                context.rpy2_initialized = False
+                self.completion_service.clear_session_context(old_kernel_session_id)
+                await self._save_contexts()
+
+                return {
+                    "success": True,
+                    "action": "switch",
+                    "notebook_path": notebook_path,
+                    "kernel_session_id": context.kernel_session_id,
+                    "kernel_spec": context.kernel_spec,
+                    "kernel_status": create_result.get("status", "idle"),
                 }
 
             elif action == "delete":
@@ -1442,6 +1556,16 @@ class IntegratedNotebookToolSet(ToolSet):
             # Add notebook-specific fields
             exec_result["notebook_path"] = notebook_path
 
+            # Structural error surfacing: scan outputs for error nodes and
+            # promote them to top-level fields so even weak models notice.
+            error_outputs = [
+                o for o in outputs if o.get("output_type") == "error"
+            ]
+            if error_outputs:
+                err = error_outputs[0]
+                exec_result["success"] = False
+                exec_result["error"] = f"{err.get('ename', 'Error')}: {err.get('evalue', 'unknown error')}"
+
             return exec_result
 
         except Exception as e:
@@ -1463,6 +1587,7 @@ class IntegratedNotebookToolSet(ToolSet):
         old_content: Optional[str] = None,
         position: Optional[str] = None,
         execute: bool = False,
+        language: Optional[str] = None,
     ) -> dict:
         """
         Unified tool for notebook structure operations.
@@ -1483,13 +1608,18 @@ class IntegratedNotebookToolSet(ToolSet):
                 - For add_cell: None=append to end, "0"/"1"/"-1"=index, or a cell_id=insert after that cell
                 - For move_cell: None=move to top, or a cell_id=move after that cell
             execute: For add_cell/update_cell: execute the cell after modification (recommended for code cells)
+            language: For create action: "python" or "r". Sets the notebook kernel.
+                     Defaults to "python" if not specified.
 
         Returns:
             dict with action-specific results
 
         Examples:
-            # Create notebook
+            # Create a Python notebook
             notebook_edit("analysis.ipynb", action="create")
+
+            # Create an R notebook
+            notebook_edit("analysis.ipynb", action="create", language="r")
 
             # Add and execute a code cell
             notebook_edit("analysis.ipynb", action="add_cell",
@@ -1511,7 +1641,7 @@ class IntegratedNotebookToolSet(ToolSet):
                          cell_id="abc123", position="def456")
         """
         if action == "create":
-            return await self.create_notebook(notebook_path)
+            return await self.create_notebook(notebook_path, language=language)
 
         elif action == "add_cell":
             return await self.add_cell(

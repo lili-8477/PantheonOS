@@ -14,6 +14,7 @@ except ImportError:
     ValidationError = Exception
 
 from pantheon.toolset import ToolSet, tool
+from pantheon.toolsets.notebook.language_detection import detect_notebook_language
 from pantheon.utils.log import logger
 
 
@@ -225,6 +226,17 @@ class NotebookContentsToolSet(ToolSet):
             }
 
         # Do not auto-upgrade on read to avoid implicit writes; save path will enforce
+
+        # Normalize for frontend compatibility:
+        # 1. Join source lists into strings (Monaco expects string, not list-of-lines)
+        # 2. Set cell.metadata.language for code cells (frontend reads this for editor mode)
+        nb_language = detect_notebook_language(notebook.get("metadata", {}))
+        for cell in notebook.get("cells", []):
+            src = cell.get("source", "")
+            if isinstance(src, list):
+                cell["source"] = "".join(src)
+            if cell.get("cell_type") == "code" and nb_language:
+                cell.setdefault("metadata", {})["language"] = nb_language
 
         # Add version info for change detection
         try:
@@ -678,9 +690,18 @@ class NotebookContentsToolSet(ToolSet):
 
     @tool
     async def create_notebook(
-        self, path: str, title: Optional[str] = None, kernel_spec: Optional[dict] = None
+        self, path: str, title: Optional[str] = None, kernel_spec: Optional[dict] = None,
+        language: Optional[str] = None,
     ) -> dict:
-        """Create new notebook file"""
+        """Create new notebook file.
+
+        Args:
+            path: Notebook file path
+            title: Optional notebook title
+            kernel_spec: Optional explicit kernel spec dict
+            language: Optional language hint ("python" or "r"). If provided and
+                     kernel_spec is not, auto-sets kernel_spec and language_info.
+        """
         logger.info(f"Creating notebook: {path}")
 
         # Validate path (don't require existence)
@@ -694,29 +715,30 @@ class NotebookContentsToolSet(ToolSet):
             return {"success": False, "error": f"Notebook already exists: {path}"}
 
         try:
+            from .language_detection import get_kernel_spec, get_language_info
+
             # Ensure .ipynb extension
             if not resolved_path.suffix.lower() == ".ipynb":
                 resolved_path = resolved_path.with_suffix(".ipynb")
 
+            # Default to python if no language specified
+            if not language:
+                language = "python"
+
             # Create notebook using nbformat standard library
             notebook = nbformat.v4.new_notebook()
 
-            # Set metadata
+            # Set metadata — kernel_spec takes priority, otherwise derive from language
             if kernel_spec:
                 notebook.metadata.kernelspec = kernel_spec
             else:
-                notebook.metadata.kernelspec = {
-                    "display_name": "Python 3",
-                    "language": "python",
-                    "name": "python3",
-                }
+                notebook.metadata.kernelspec = get_kernel_spec(language)
 
-            notebook.metadata.language_info = {
-                "name": "python",
-                "version": "3.8.0",
-                "mimetype": "text/x-python",
-                "file_extension": ".py",
-            }
+            notebook.metadata.language_info = get_language_info(language)
+
+            # Set top-level language field for frontend compatibility
+            # (bioFlow reads .metadata.language, not .metadata.language_info.name)
+            notebook.metadata.language = language
 
             # Note: We don't automatically add a title cell to follow nbformat standards
             # Users should add title cells manually if needed
@@ -740,6 +762,53 @@ class NotebookContentsToolSet(ToolSet):
 
         except Exception as e:
             logger.error(f"Failed to create notebook: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def update_notebook_kernel(
+        self, path: str, language: str, kernel_spec: Optional[dict] = None
+    ) -> dict:
+        """Update notebook kernel metadata and persist it.
+
+        Args:
+            path: Notebook file path
+            language: Language name ("python" or "r")
+            kernel_spec: Optional explicit kernelspec metadata
+        """
+        logger.info(f"Updating notebook kernel metadata: {path} -> {language}")
+
+        success, error_msg, resolved_path, notebook = self._load_and_validate_notebook(
+            path, validate=False
+        )
+        if not success or not resolved_path or not notebook:
+            return {"success": False, "error": error_msg}
+
+        if resolved_path.suffix.lower() != ".ipynb":
+            return {
+                "success": False,
+                "error": f"File is not a Jupyter notebook: {path}",
+            }
+
+        try:
+            from .language_detection import get_kernel_spec, get_language_info
+
+            notebook.metadata.kernelspec = (
+                kernel_spec if kernel_spec else get_kernel_spec(language)
+            )
+            notebook.metadata.language_info = get_language_info(language)
+            notebook.metadata.language = language
+
+            save_result = await self._save_notebook(resolved_path, notebook)
+            if not save_result["success"]:
+                return save_result
+
+            return {
+                "success": True,
+                "file_path": str(resolved_path),
+                "language": language,
+                "kernel_spec": notebook.metadata.kernelspec,
+            }
+        except Exception as e:
+            logger.error(f"Failed to update notebook kernel metadata: {e}")
             return {"success": False, "error": str(e)}
 
     async def _save_notebook(

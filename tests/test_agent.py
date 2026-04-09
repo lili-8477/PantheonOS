@@ -3,12 +3,14 @@ import random
 from pathlib import Path
 from typing import List
 
+import pytest
 from pydantic import BaseModel, Field
 
 from pantheon.agent import Agent, AgentTransfer
 from pantheon.utils.vision import vision_input
 
 HERE = Path(__file__).parent
+pytestmark = pytest.mark.live_llm
 
 
 async def test_stream():

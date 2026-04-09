@@ -1,0 +1,907 @@
+/* ============================================================
+   bioFlow — UI Polish Overrides
+   Pure visual refinements. No functional changes.
+   ============================================================ */
+
+
+/* -----------------------------------------------------------
+   1. TYPOGRAPHY
+   Replace Inter with DM Sans for a cleaner, more refined feel.
+   Keep Bebas Neue for display, JetBrains Mono for code.
+   ----------------------------------------------------------- */
+
+body {
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tiptap / markdown editor inherits the refined body font */
+.tiptap-markdown-editor .tiptap {
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif !important;
+}
+
+/* Chat message text — slightly tighter line-height for polish */
+[class*="message-text"] {
+  font-family: "DM Sans", "Google Sans", "Helvetica Neue", sans-serif !important;
+}
+
+/* Chat input */
+[class*="chat-input-tiptap"] {
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Config labels, sidebar text */
+[class*="config-label"],
+[class*="workspace-mode-label"] {
+  letter-spacing: 0.01em;
+}
+
+/* Headings — tighten tracking */
+h1, h2, h3, h4, h5, h6,
+[class*="dialog-header"] h2,
+[class*="card-title"],
+[class*="hero-title"] {
+  letter-spacing: -0.015em;
+}
+
+
+/* -----------------------------------------------------------
+   2. COLOR PALETTE — Indigo-tinted dark theme
+   Shift flat grays toward a subtle indigo undertone for depth.
+   ----------------------------------------------------------- */
+
+:root, .dark-theme {
+  /* Backgrounds — warm the grays with a hint of indigo */
+  --color-bg-primary: #1b1b22;
+  --color-bg-secondary: #22222a;
+  --color-bg-tertiary: #2a2a33;
+  --color-bg-sidebar: #16161c;
+  --color-bg-hover: #282832;
+
+  /* Text — softer than pure #ccc */
+  --color-text-primary: #d0d0da;
+  --color-text-secondary: #9a9aab;
+  --color-text-tertiary: #6b6b7e;
+
+  /* Borders — subtle indigo tint */
+  --color-border: #333340;
+  --color-divider: #3a3a4a;
+
+  /* Primary accent — refined indigo-blue */
+  --color-primary: #6366f1;
+  --color-primary-hover: #7477f5;
+  --color-primary-dark: #4f46e5;
+  --color-accent: #818cf8;
+  --color-accent-hover: #a5b4fc;
+
+  /* Semantic — slightly softened */
+  --color-error: #f87171;
+  --color-error-bg: rgba(248, 113, 113, 0.12);
+  --color-success: #6ee7b7;
+  --color-success-bg: rgba(110, 231, 183, 0.10);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.10);
+  --color-info: #93c5fd;
+
+  /* Primary surfaces */
+  --color-primary-text: #f0f0f8;
+  --color-primary-bg: rgba(99, 102, 241, 0.12);
+
+  /* Scrollbar */
+  --color-scrollbar-track: transparent;
+  --color-scrollbar-thumb: #3d3d50;
+  --color-scrollbar-thumb-hover: #6366f1;
+
+  /* Notebook / code editor — aligned with new palette */
+  --nb-code-bg: rgba(255, 255, 255, 0.025);
+  --nb-code-border: rgba(255, 255, 255, 0.06);
+  --nb-code-token-keyword: #a5b4fc;
+  --nb-code-token-string: #fca5a5;
+  --nb-code-token-number: #bef264;
+  --nb-code-token-function: #fde68a;
+  --nb-code-token-comment: #6b7280;
+
+  --nb-action-hover: rgba(255, 255, 255, 0.06);
+  --nb-dropdown-bg: rgba(28, 28, 36, 0.97);
+  --nb-dropdown-border: rgba(255, 255, 255, 0.08);
+
+  --nb-code-editor-bg: #17171e;
+  --nb-code-editor-foreground: #d4d4e0;
+  --nb-code-editor-linenumber: #5a5a70;
+  --nb-code-editor-selection: rgba(99, 102, 241, 0.25);
+  --nb-code-editor-selection-inactive: rgba(99, 102, 241, 0.12);
+  --nb-code-editor-border: rgba(255, 255, 255, 0.06);
+
+  --nb-composer-bg: rgba(24, 24, 32, 0.96);
+  --nb-composer-border: rgba(255, 255, 255, 0.10);
+  --nb-composer-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --nb-composer-active-border: rgba(99, 102, 241, 0.7);
+  --nb-composer-active-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+
+  --nb-output-bg: #242430;
+  --nb-output-border: rgba(255, 255, 255, 0.08);
+  --nb-output-error-bg: #3b1c1c;
+  --nb-output-error-text: #fca5a5;
+  --nb-output-fallback-bg: rgba(251, 191, 36, 0.10);
+  --nb-output-fallback-text: #fbbf24;
+
+  --nb-canvas-bg: #1a1a22;
+
+  --nb-markdown-code-bg: rgba(24, 24, 34, 0.8);
+  --nb-markdown-code-border: rgba(99, 102, 241, 0.15);
+  --nb-inline-code-bg: rgba(99, 102, 241, 0.12);
+  --nb-inline-code-text: #d0d0e0;
+
+  --nb-blockquote-border: rgba(99, 102, 241, 0.3);
+
+  --nb-gap-trigger-bg: rgba(24, 24, 32, 0.92);
+  --nb-gap-trigger-border: rgba(255, 255, 255, 0.10);
+  --nb-gap-line-color: rgba(99, 102, 241, 0.15);
+
+  --nb-cell-border-hover: rgba(99, 102, 241, 0.2);
+  --nb-code-card-border-hover: rgba(99, 102, 241, 0.18);
+
+  --nb-control-hover-bg: rgba(99, 102, 241, 0.12);
+}
+
+/* Light theme — refined warm neutrals with indigo accent */
+.light-theme {
+  --color-bg-primary: #fafafe;
+  --color-bg-secondary: #f2f2f8;
+  --color-bg-tertiary: #eaeaf2;
+  --color-bg-sidebar: #f0f0f6;
+  --color-bg-hover: #e6e6f0;
+
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #5a5a72;
+  --color-text-tertiary: #8a8aa0;
+
+  --color-border: #d8d8e6;
+  --color-divider: #d0d0de;
+
+  --color-primary: #6366f1;
+  --color-primary-hover: #4f46e5;
+  --color-primary-dark: #4338ca;
+  --color-accent: #6366f1;
+  --color-accent-hover: #4f46e5;
+
+  --color-primary-bg: rgba(99, 102, 241, 0.08);
+  --color-scrollbar-thumb: #c4c4d4;
+  --color-scrollbar-thumb-hover: #6366f1;
+
+  --nb-code-editor-bg: #1a1a2e;
+  --nb-code-editor-foreground: #f0f0f8;
+  --nb-code-editor-selection: rgba(99, 102, 241, 0.22);
+
+  --nb-code-token-keyword: #6366f1;
+  --nb-code-token-string: #059669;
+  --nb-code-token-number: #b45309;
+  --nb-code-token-function: #be123c;
+  --nb-code-token-comment: #8a8aa0;
+
+  --nb-inline-code-bg: rgba(99, 102, 241, 0.08);
+  --nb-inline-code-text: #1a1a2e;
+  --nb-markdown-code-border: rgba(99, 102, 241, 0.15);
+  --nb-blockquote-border: rgba(99, 102, 241, 0.25);
+}
+
+
+/* -----------------------------------------------------------
+   3. SCROLLBARS
+   Thinner, rounded, with accent hover.
+   ----------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb, #3d3d50);
+  border-radius: 100px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-thumb-hover, #6366f1);
+  background-clip: padding-box;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar-thumb, #3d3d50) transparent;
+}
+
+
+/* -----------------------------------------------------------
+   4. SELECTION HIGHLIGHT
+   Brand-tinted text selection.
+   ----------------------------------------------------------- */
+
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: inherit;
+}
+
+
+/* -----------------------------------------------------------
+   5. SURFACES & BORDERS
+   Subtler dividers, warmer shadows, refined depth.
+   ----------------------------------------------------------- */
+
+/* Top navbar smooth border */
+.top-navbar {
+  border-bottom-color: var(--color-border) !important;
+  backdrop-filter: blur(12px);
+}
+
+/* Sidebar — seamless gradient border instead of hard line */
+.sidebar {
+  border-right-color: var(--color-border) !important;
+}
+
+.right-sidebar {
+  border-left-color: var(--color-border) !important;
+}
+
+/* Config section dividers — subtler */
+[class*="config-section"] {
+  border-bottom-color: var(--color-border) !important;
+}
+
+/* Workspace toolbar border */
+[class*="workspace-toolbar"] {
+  border-bottom-color: var(--color-border) !important;
+}
+
+/* Workspace mode bar */
+[class*="workspace-mode-bar"] {
+  background: var(--color-bg-secondary) !important;
+  border-bottom-color: var(--color-border) !important;
+}
+
+
+/* -----------------------------------------------------------
+   6. BUTTONS
+   Refined hover states, better easing, no harsh transforms.
+   ----------------------------------------------------------- */
+
+/* Primary action buttons — smooth indigo gradient */
+[class*="variant-primary"],
+[class*="confirm-btn"],
+[class*="action-primary"],
+[class*="btn-primary"] {
+  background: linear-gradient(135deg, #6366f1, #818cf8) !important;
+  border: none !important;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.25) !important;
+}
+
+[class*="variant-primary"]:hover:not(:disabled),
+[class*="confirm-btn"]:hover,
+[class*="action-primary"]:hover,
+[class*="btn-primary"]:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35) !important;
+  transform: translateY(-1px) !important;
+}
+
+[class*="variant-primary"]:active:not(:disabled),
+[class*="confirm-btn"]:active,
+[class*="btn-primary"]:active:not(:disabled) {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Secondary / ghost buttons — refined borders */
+[class*="variant-secondary"],
+[class*="cancel-btn"],
+[class*="btn-secondary"] {
+  border-color: var(--color-border) !important;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+[class*="variant-secondary"]:hover:not(:disabled),
+[class*="cancel-btn"]:hover,
+[class*="btn-secondary"]:hover:not(:disabled) {
+  border-color: var(--color-accent) !important;
+  background: rgba(99, 102, 241, 0.06) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Icon buttons — consistent hover */
+[class*="header-icon-btn"],
+[class*="icon-bar-btn"],
+[class*="close-btn"],
+[class*="action-btn"] {
+  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+[class*="header-icon-btn"]:hover,
+[class*="close-btn"]:hover {
+  background: rgba(99, 102, 241, 0.1) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Active icon button accent — use indigo instead of purple */
+[class*="header-icon-btn"].active {
+  color: var(--color-accent) !important;
+  background: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* Danger buttons — keep red but refine */
+[class*="variant-danger"],
+[class*="btn-danger"] {
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+[class*="variant-danger"]:hover:not(:disabled),
+[class*="btn-danger"]:hover:not(:disabled) {
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3) !important;
+}
+
+
+/* -----------------------------------------------------------
+   7. INPUTS & FOCUS STATES
+   Clean focus rings, subtle inner glow.
+   ----------------------------------------------------------- */
+
+/* General input focus ring */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none !important;
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Chat input surface — refined composer */
+[class*="chat-input-surface"] {
+  border-color: var(--color-border) !important;
+  background-color: var(--color-bg-primary) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  transition: border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+[class*="chat-input-surface"]:focus-within {
+  border-color: rgba(99, 102, 241, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1),
+    0 8px 32px rgba(0, 0, 0, 0.2) !important;
+}
+
+
+/* -----------------------------------------------------------
+   8. SIDEBAR
+   Better hierarchy, refined hover states.
+   ----------------------------------------------------------- */
+
+/* Sidebar panel backgrounds */
+[class*="workspace-panel"] {
+  background-color: var(--color-bg-sidebar) !important;
+}
+
+/* Collapsed icon bar */
+[class*="collapsed-icon-bar"] {
+  background-color: var(--color-bg-sidebar) !important;
+}
+
+/* Icon bar active indicator — indigo gradient */
+[class*="icon-bar-btn"].active::before {
+  background: linear-gradient(180deg, #818cf8, #6366f1) !important;
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.5) !important;
+}
+
+/* Config items — refined hover */
+[class*="config-item"]:hover {
+  background: rgba(99, 102, 241, 0.06) !important;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.1) !important;
+}
+
+[class*="config-item"].active {
+  background: rgba(99, 102, 241, 0.1) !important;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Config icon — subtle tint on hover */
+[class*="config-item"]:hover [class*="config-icon"] {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: var(--color-accent) !important;
+}
+
+/* Context menu — refined shadows */
+[class*="workspace-context-menu"] {
+  background: var(--color-bg-primary) !important;
+  border-color: var(--color-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+[class*="workspace-context-menu"] button:hover {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+/* Workspace mode toggle — indigo active */
+[class*="workspace-mode-toggle"].active {
+  color: var(--color-accent) !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+
+
+/* -----------------------------------------------------------
+   9. DIALOGS & OVERLAYS
+   Better shadows, refined borders, smoother entrance.
+   ----------------------------------------------------------- */
+
+[class*="dialog-container"] {
+  border-color: var(--color-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+[class*="dialog-header"] {
+  border-bottom-color: var(--color-border) !important;
+}
+
+[class*="dialog-footer"] {
+  border-top-color: var(--color-border) !important;
+}
+
+/* Dialog overlay — deeper with subtle blur */
+[class*="dialog-overlay"] {
+  backdrop-filter: blur(4px) !important;
+}
+
+
+/* -----------------------------------------------------------
+   10. CHAT / MESSAGES
+   Better spacing, refined message containers.
+   ----------------------------------------------------------- */
+
+/* Message items — subtle separator spacing */
+[class*="message-item"] {
+  transition: background-color 0.15s ease !important;
+}
+
+/* Chat container — ensure smooth transitions */
+[class*="chat-container"] {
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+
+/* -----------------------------------------------------------
+   11. CODE BLOCKS
+   Refined syntax highlighting area, subtle borders.
+   ----------------------------------------------------------- */
+
+[class*="code-block-container"],
+[class*="code-block-wrapper"] {
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+
+[class*="code-block-header"] {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Code action buttons — refined */
+[class*="code-actions"] button {
+  transition: all 0.15s ease !important;
+}
+
+[class*="code-actions"] button:hover {
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+
+
+/* -----------------------------------------------------------
+   12. STORE PAGE
+   Shift purple accents to align with indigo palette.
+   Keep the dramatic aesthetic but make it more cohesive.
+   ----------------------------------------------------------- */
+
+:root {
+  --store-bg: #08071a;
+}
+
+/* Store page background gradients — deeper indigo */
+.store-page::before {
+  background:
+    radial-gradient(900px at 10% 10%, rgba(99, 102, 241, 0.08), transparent 55%),
+    radial-gradient(1000px at 90% 15%, rgba(59, 130, 246, 0.06), transparent 55%),
+    radial-gradient(700px at 50% 95%, rgba(99, 102, 241, 0.05), transparent 55%) !important;
+}
+
+/* Store surface cards — indigo hover glow */
+.store-surface-hover:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), transparent) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08) !important;
+}
+
+/* Store tabs — indigo active */
+.store-tab:hover {
+  color: rgba(255, 255, 255, 0.65) !important;
+  background: rgba(99, 102, 241, 0.06) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+.store-tab-active {
+  color: #c7d2fe !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Store category tags — indigo active */
+.store-category-tag:hover {
+  color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.store-category-tag-active {
+  color: #c7d2fe !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+.store-category-tag-active .store-category-count {
+  color: rgba(199, 210, 254, 0.6) !important;
+  background: rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Store scrollbar — indigo accent */
+.store-page ::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.25) !important;
+}
+
+/* Store page buttons — indigo active */
+.store-page-btn:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+.store-page-btn-active {
+  color: #c7d2fe !important;
+  background: rgba(99, 102, 241, 0.2) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Store page tabs */
+.store-page-tab:hover {
+  color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+
+.store-page-tab-active {
+  color: rgba(199, 210, 254, 0.9) !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+
+/* -----------------------------------------------------------
+   13. DROPDOWN MENUS
+   Refined panels with better depth.
+   ----------------------------------------------------------- */
+
+[class*="dropdown-panel"],
+[class*="dropdown-content"] {
+  border-color: var(--color-border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+[class*="dropdown-item"]:hover {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+
+/* -----------------------------------------------------------
+   14. NOTEBOOK CELLS
+   Refined cell borders and hover states.
+   ----------------------------------------------------------- */
+
+[class*="cell-type-code"] {
+  transition: border-color 0.2s ease !important;
+}
+
+[class*="cell-action"] {
+  transition: all 0.15s ease !important;
+}
+
+[class*="cell-action"]:hover {
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+
+
+/* -----------------------------------------------------------
+   15. NB MENU ITEMS
+   Refined hover active states.
+   ----------------------------------------------------------- */
+
+.nb-menu-item:hover {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+.nb-menu-item.active {
+  background: rgba(99, 102, 241, 0.12) !important;
+}
+
+
+/* -----------------------------------------------------------
+   16. TRANSITIONS — Global smoothing
+   Override .3s ease with tighter curves everywhere.
+   ----------------------------------------------------------- */
+
+.top-navbar,
+.sidebar,
+.right-sidebar,
+.chat-container,
+.dialog-container,
+.messages-container,
+[class*="agent-item"],
+[class*="history-item"] {
+  transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+button,
+input,
+textarea {
+  transition: background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+
+/* -----------------------------------------------------------
+   17. TIPTAP / MARKDOWN — Refined typography details
+   ----------------------------------------------------------- */
+
+.tiptap-markdown-editor .tiptap h1,
+.tiptap-markdown-editor .tiptap h2,
+.tiptap-markdown-editor .tiptap h3 {
+  font-weight: 650 !important;
+}
+
+/* Task list checkboxes — indigo accent */
+.tiptap-markdown-editor .tiptap ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
+  border-color: var(--color-accent) !important;
+}
+
+.tiptap-markdown-editor .tiptap ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* Table cells — aligned borders */
+.tiptap-markdown-editor .tiptap th {
+  background: var(--color-bg-tertiary) !important;
+  border-color: var(--color-border) !important;
+}
+
+.tiptap-markdown-editor .tiptap td {
+  border-color: var(--color-border) !important;
+}
+
+/* File link chips — indigo tint on hover */
+.tiptap-markdown-editor .tiptap a.file-link-chip:hover {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+
+/* -----------------------------------------------------------
+   18. SETTINGS PAGE
+   Refine the settings container to match the new palette.
+   ----------------------------------------------------------- */
+
+[class*="settings-container"] {
+  background: var(--color-bg-secondary) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+}
+
+
+/* -----------------------------------------------------------
+   19. ADMIN DASHBOARD — Refined cards for dark theme
+   ----------------------------------------------------------- */
+
+.dark-theme [class*="chatroom-pool-status"] [class*="card"] {
+  background: var(--color-bg-secondary) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark-theme [class*="chatroom-pool-status"] [class*="card"] h2,
+.dark-theme [class*="chatroom-pool-status"] [class*="card"] h3 {
+  color: var(--color-text-primary) !important;
+}
+
+.dark-theme [class*="chatroom-pool-status"] .label {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark-theme [class*="chatroom-pool-status"] .value {
+  color: var(--color-text-primary) !important;
+}
+
+
+/* -----------------------------------------------------------
+   20. DROP OVERLAY — Refined drag feedback
+   ----------------------------------------------------------- */
+
+[class*="drop-overlay"] {
+  backdrop-filter: blur(4px) !important;
+}
+
+[class*="drop-overlay-content"] {
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  background: rgba(99, 102, 241, 0.06) !important;
+}
+
+/* Drag-over workspace panel */
+[class*="workspace-panel"].drag-over {
+  outline-color: var(--color-primary) !important;
+}
+
+
+/* -----------------------------------------------------------
+   21. UPLOAD PROGRESS — Indigo fill
+   ----------------------------------------------------------- */
+
+[class*="sidebar-upload-fill"] {
+  background: linear-gradient(90deg, #6366f1, #818cf8) !important;
+}
+
+[class*="progress-fill"] {
+  background: linear-gradient(90deg, #6366f1, #818cf8) !important;
+}
+
+
+/* -----------------------------------------------------------
+   22. STORE DIALOG / DETAIL — Refined overlays
+   ----------------------------------------------------------- */
+
+[class*="store-dialog-body"] ::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb) !important;
+}
+
+[class*="store-detail-body"] ::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb) !important;
+}
+
+
+/* -----------------------------------------------------------
+   23. SIDEBAR MENU (Settings dialog) — Refined active state
+   ----------------------------------------------------------- */
+
+[class*="sidebar-menu"] button {
+  transition: all 0.15s ease !important;
+}
+
+[class*="sidebar-menu"] button:hover {
+  background: rgba(99, 102, 241, 0.06) !important;
+}
+
+
+/* -----------------------------------------------------------
+   24. TOOLTIP & POPOVER — Refined
+   ----------------------------------------------------------- */
+
+[class*="tooltip"],
+[role="tooltip"] {
+  border-radius: 8px !important;
+}
+
+
+/* -----------------------------------------------------------
+   25. LOADING STATES — Indigo spinner
+   ----------------------------------------------------------- */
+
+[class*="spinner"] {
+  border-top-color: #818cf8 !important;
+}
+
+
+/* -----------------------------------------------------------
+   26. FILE CHIPS — Refined tags
+   ----------------------------------------------------------- */
+
+[class*="file-chip"],
+[class*="file-count-tag"] {
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+
+
+/* -----------------------------------------------------------
+   27. MONACO EDITOR — Dark theme refinement
+   ----------------------------------------------------------- */
+
+.dark-theme .monaco-editor .parameter-hints-widget {
+  background: var(--color-bg-secondary) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark-theme .monaco-editor .parameter-hints-widget .signature {
+  background: var(--color-bg-primary) !important;
+  border-color: var(--color-border) !important;
+}
+
+
+/* -----------------------------------------------------------
+   28. ELEMENT PLUS OVERRIDES (global)
+   Align El-Plus components with the new palette.
+   ----------------------------------------------------------- */
+
+:root {
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-9: #e0e7ff;
+  --el-color-primary-dark-2: #4f46e5;
+
+  --el-color-success: #10b981;
+  --el-color-warning: #f59e0b;
+  --el-color-danger: #ef4444;
+  --el-color-info: #6b7280;
+
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 100px;
+}
+
+.dark-theme,
+:root {
+  --el-bg-color: var(--color-bg-primary);
+  --el-bg-color-overlay: var(--color-bg-secondary);
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text-secondary);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-fill-color-blank: var(--color-bg-primary);
+}
+
+
+/* -----------------------------------------------------------
+   29. NOTEBOOK MONACO VISIBILITY SAFEGUARDS
+   Prevent custom layout overrides from collapsing code cells.
+   ----------------------------------------------------------- */
+
+.notebook-card .cell-editor.mode-code,
+.notebook-card .monaco-editor-container {
+  min-height: 60px !important;
+}
+
+.notebook-card .monaco-editor-container > .monaco-editor,
+.notebook-card .monaco-editor-container .overflow-guard,
+.notebook-card .monaco-editor-container .monaco-scrollable-element,
+.notebook-card .monaco-editor-container .lines-content {
+  min-height: 60px !important;
+}
+
+.notebook-card .monaco-editor-container .view-lines,
+.notebook-card .monaco-editor-container .view-line {
+  color: var(--nb-code-editor-foreground, #d4d4e0) !important;
+}

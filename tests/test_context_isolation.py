@@ -16,6 +16,8 @@ from pantheon.agent import Agent
 from pantheon.internal.memory import Memory
 from pantheon.team import PantheonTeam
 
+pytestmark = pytest.mark.live_llm
+
 
 # ============ Test 1: Memory flat model with sub-agent delegation ============
 

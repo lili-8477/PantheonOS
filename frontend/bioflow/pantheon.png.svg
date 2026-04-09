@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="helix1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="helix2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#0f172a" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- DNA Double Helix backbone strand 1 -->
+  <path d="M 40 18 C 75 30, 25 46, 60 58 C 95 70, 25 86, 60 98 C 75 104, 55 110, 50 114"
+        fill="none" stroke="url(#helix1)" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- DNA Double Helix backbone strand 2 -->
+  <path d="M 88 18 C 53 30, 103 46, 68 58 C 33 70, 103 86, 68 98 C 53 104, 73 110, 78 114"
+        fill="none" stroke="url(#helix2)" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Base pair rungs with TCGA letters -->
+
+  <!-- T -->
+  <line x1="48" y1="28" x2="80" y2="28" stroke="#334155" stroke-width="1.5" opacity="0.5"/>
+  <text x="64" y="32" text-anchor="middle" font-family="SF Mono, Fira Code, monospace" font-size="11" font-weight="700" fill="#f472b6">T</text>
+
+  <!-- C -->
+  <line x1="42" y1="46" x2="86" y2="46" stroke="#334155" stroke-width="1.5" opacity="0.5"/>
+  <text x="64" y="50" text-anchor="middle" font-family="SF Mono, Fira Code, monospace" font-size="11" font-weight="700" fill="#34d399">C</text>
+
+  <!-- G -->
+  <line x1="50" y1="64" x2="78" y2="64" stroke="#334155" stroke-width="1.5" opacity="0.5"/>
+  <text x="64" y="68" text-anchor="middle" font-family="SF Mono, Fira Code, monospace" font-size="11" font-weight="700" fill="#60a5fa">G</text>
+
+  <!-- A -->
+  <line x1="42" y1="82" x2="86" y2="82" stroke="#334155" stroke-width="1.5" opacity="0.5"/>
+  <text x="64" y="86" text-anchor="middle" font-family="SF Mono, Fira Code, monospace" font-size="11" font-weight="700" fill="#fbbf24">A</text>
+
+  <!-- Extra base pair rungs (no letters, just structure) -->
+  <line x1="55" y1="37" x2="73" y2="37" stroke="#334155" stroke-width="1" opacity="0.3"/>
+  <line x1="44" y1="55" x2="84" y2="55" stroke="#334155" stroke-width="1" opacity="0.3"/>
+  <line x1="44" y1="73" x2="84" y2="73" stroke="#334155" stroke-width="1" opacity="0.3"/>
+  <line x1="55" y1="91" x2="73" y2="91" stroke="#334155" stroke-width="1" opacity="0.3"/>
+  <line x1="48" y1="100" x2="80" y2="100" stroke="#334155" stroke-width="1" opacity="0.3"/>
+</svg>
