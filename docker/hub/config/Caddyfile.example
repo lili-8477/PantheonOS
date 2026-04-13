@@ -1,0 +1,6 @@
+# Replace `your-domain.example.com` with the public domain pointed at this host.
+# Caddy will automatically obtain and renew a Let's Encrypt certificate.
+# WebSocket (/ws/) upgrades are handled automatically by reverse_proxy.
+your-domain.example.com {
+    reverse_proxy nginx:80
+}

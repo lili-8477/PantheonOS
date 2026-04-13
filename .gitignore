@@ -182,6 +182,14 @@ chatroom-workspace/
 # NATS JetStream storage
 jetstream_storage/
 
+# Hub deployment: live state and secrets (never commit)
+docker/hub/.env
+docker/hub/config/Caddyfile
+docker/hub/config/htpasswd
+docker/hub/config/certs/
+docker/hub/workspaces/
+docker/hub/data/shared/
+
 # Temporary & development
 try/
 tmp/

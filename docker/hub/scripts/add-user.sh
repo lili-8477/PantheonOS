@@ -10,6 +10,20 @@ COMPOSE_FILE="${HUB_DIR}/docker-compose.yml"
 HTPASSWD_FILE="${HUB_DIR}/config/htpasswd"
 SHARED_DATA_DIR="${HUB_DIR}/data/shared"
 
+# Derive docker network name from compose project name.
+# Reads `name:` from docker-compose.yml; falls back to directory name.
+COMPOSE_PROJECT_NAME=$(awk '/^name:/ {print $2; exit}' "${COMPOSE_FILE}" 2>/dev/null || true)
+if [ -z "${COMPOSE_PROJECT_NAME:-}" ]; then
+    COMPOSE_PROJECT_NAME="$(basename "${HUB_DIR}")"
+fi
+DOCKER_NETWORK="${COMPOSE_PROJECT_NAME}_pantheon-network"
+
+if ! docker network inspect "${DOCKER_NETWORK}" >/dev/null 2>&1; then
+    echo "Error: docker network '${DOCKER_NETWORK}' not found."
+    echo "  Did you start the hub? Run: docker compose up -d"
+    exit 1
+fi
+
 # ── Parse arguments ──────────────────────────────────────────────────────────
 USERNAME=""
 API_KEY=""
@@ -180,7 +194,7 @@ done
 
 docker run -d \
     --name "${CONTAINER_NAME}" \
-    --network pantheon-hub_pantheon-network \
+    --network "${DOCKER_NETWORK}" \
     --restart unless-stopped \
     -e PANTHEON_MODE=hub \
     -e "ID_HASH=${ID_HASH}" \
@@ -224,13 +238,14 @@ if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     fi
 
     echo ""
-    echo "To connect via Pantheon UI:"
-    echo "  1. Open https://pantheon-ui.aristoteleo.com"
-    echo "  2. Set NATS WebSocket URL to: ws://${USERNAME}:<password>@<your-server-ip>:8080"
-    echo "  3. Set Service ID to: ${ID_HASH}"
+    echo "To connect via the bundled bioFlow UI:"
+    echo "  1. Open https://<your-domain>/    (or http://<server-ip>/ for local-only)"
+    echo "  2. Set NATS WebSocket URL to:  wss://<your-domain>/ws/"
+    echo "                            or:  ws://<server-ip>/ws/    (no TLS)"
+    echo "  3. Set Service ID to:  ${ID_HASH}"
     echo ""
-    echo "Or use the full connection URL:"
-    echo "  https://pantheon-ui.aristoteleo.com/#/?nats=ws://${USERNAME}:<password>@<your-server-ip>:8080&service=${ID_HASH}&auto=true"
+    echo "Or use a one-click connection URL (replace <your-domain>):"
+    echo "  https://<your-domain>/#/?nats=wss://<your-domain>/ws/&service=${ID_HASH}&auto=true"
 else
     echo "Error: Container failed to start. Check logs:"
     echo "  docker logs ${CONTAINER_NAME}"

@@ -123,6 +123,20 @@ After startup, copy the displayed connection URL to your browser and start using
 
 For detailed Docker usage, deployment modes, and configuration options, see the [Docker documentation](https://github.com/aristoteleo/PantheonOS/tree/main/pantheon-agents/docker).
 
+#### Hub Mode (Multi-User Deployment)
+
+For a shared deployment serving multiple isolated users from one host — with
+NATS message broker, Qdrant vector DB, the bundled bioFlow web UI, and Caddy
+auto-HTTPS via Let's Encrypt — see [`docker/hub/README.md`](docker/hub/README.md).
+
+```bash
+cd docker/hub
+cp .env.example .env                          # add API keys
+cp config/Caddyfile.example config/Caddyfile  # set your domain
+docker compose up -d
+./scripts/add-user.sh alice
+```
+
 ## `4` [Usage](#4-usage)
 
 ### CLI Mode

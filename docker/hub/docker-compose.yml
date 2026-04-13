@@ -1,4 +1,4 @@
-version: '3.8'
+name: pantheon-hub
 
 # =============================================================================
 # PantheonOS Hub Mode - Multi-User Deployment
@@ -59,19 +59,43 @@ services:
       - pantheon-network
 
   # ─── Nginx Reverse Proxy + Auth ───────────────────────────────────────────
+  # Internal-only; Caddy terminates TLS and proxies to nginx:80.
+  # If you don't need HTTPS, comment out the caddy service below and add
+  # `ports: ["80:80"]` here to expose nginx directly.
   nginx:
     image: nginx:alpine
     container_name: pantheon-nginx
-    ports:
-      - "80:80"         # bioFlow UI + WS proxy (TLS handled upstream)
+    expose:
+      - "80"
     volumes:
-      - ./bioflow:/usr/share/nginx/html:ro
+      - ../../frontend/bioflow:/usr/share/nginx/html:ro
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/htpasswd:/etc/nginx/htpasswd:ro
       - ./config/certs:/etc/nginx/certs:ro
     depends_on:
       nats:
         condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pantheon-network
+
+  # ─── Caddy: Public HTTPS Entrypoint (auto Let's Encrypt) ──────────────────
+  # Requires:
+  #   - A public domain pointed at this host (A record → public IP)
+  #   - Ports 80 + 443 reachable from the internet (router port-forward if NAT'd)
+  #   - config/Caddyfile created from config/Caddyfile.example with your domain
+  caddy:
+    image: caddy:2-alpine
+    container_name: pantheon-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - nginx
     restart: unless-stopped
     networks:
       - pantheon-network
@@ -123,6 +147,10 @@ volumes:
   nats_jetstream:
     driver: local
   qdrant_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 networks:
