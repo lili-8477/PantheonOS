@@ -30,6 +30,18 @@ API_KEY=""
 DATA_MOUNTS=()       # --data /host/path:/container/path or --data /host/path
 IMAGE="nanguage/pantheon-agents:latest"
 
+# --code /host/path/to/pantheon  → mounts to /app/pantheon (overrides image's
+# bundled pantheon code with the host checkout). The default is the repo's
+# own ../../pantheon/ directory when it exists, so users who clone this repo
+# run exactly the code they checked out. Override precedence:
+#   1) --code <path>
+#   2) PANTHEON_DEV_CODE_PATH env var
+#   3) auto-detected ${HUB_DIR}/../../pantheon
+# Pass --no-code to run the image's bundled code instead.
+USE_CODE_MOUNT=1
+CODE_PATH="${PANTHEON_DEV_CODE_PATH:-}"
+REPO_CODE_DEFAULT="$(cd "${HUB_DIR}/../.." 2>/dev/null && pwd)/pantheon"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --data|-d)
@@ -42,6 +54,17 @@ while [[ $# -gt 0 ]]; do
             shift
             [[ $# -eq 0 ]] && { echo "Error: --image requires an argument"; exit 1; }
             IMAGE="$1"
+            shift
+            ;;
+        --code|-c)
+            shift
+            [[ $# -eq 0 ]] && { echo "Error: --code requires a path argument"; exit 1; }
+            CODE_PATH="$1"
+            USE_CODE_MOUNT=1
+            shift
+            ;;
+        --no-code)
+            USE_CODE_MOUNT=0
             shift
             ;;
         --help|-h)
@@ -57,6 +80,16 @@ Options:
 
   --image, -i IMAGE     Docker image to use (default: nanguage/pantheon-agents:latest)
 
+  --code, -c PATH       Mount a host PantheonOS checkout at /app/pantheon,
+                        overriding the image's bundled framework code.
+                        Defaults to the repo's own pantheon/ directory
+                        (../../pantheon from this script), so git-cloned
+                        deployments run their checked-out code by default.
+                        Can also be set via env var PANTHEON_DEV_CODE_PATH.
+
+  --no-code             Disable the code mount; use the framework code that
+                        ships in the docker image.
+
   --help, -h            Show this help message
 
 Examples:
@@ -66,6 +99,8 @@ Examples:
   add-user.sh alice --data /home/alice/project1:/workspace/projects/project1
   add-user.sh alice --data /data/genome-refs --data /home/alice/my-data
   add-user.sh alice --image pantheon-agents-r:latest --data /home/alice/data
+  add-user.sh alice --code /opt/PantheonOS/pantheon
+  PANTHEON_DEV_CODE_PATH=/opt/PantheonOS/pantheon add-user.sh alice
 HELP
             exit 0
             ;;
@@ -167,6 +202,28 @@ VOLUME_ARGS+=(-v "${WORKSPACE_DIR}:/workspace")
 if [ -d "$SHARED_DATA_DIR" ]; then
     VOLUME_ARGS+=(-v "${SHARED_DATA_DIR}:/workspace/shared:ro")
     echo "  Mounting shared data: ${SHARED_DATA_DIR} → /workspace/shared (read-only)"
+fi
+
+# Framework code mount (replaces the image's bundled pantheon framework).
+# Enabled by default so git-cloned deployments run their checked-out code.
+if [ "${USE_CODE_MOUNT}" = "1" ]; then
+    # Precedence: explicit CODE_PATH > PANTHEON_DEV_CODE_PATH > repo default
+    if [ -z "$CODE_PATH" ] && [ -d "$REPO_CODE_DEFAULT" ] && [ -f "${REPO_CODE_DEFAULT}/__init__.py" ]; then
+        CODE_PATH="$REPO_CODE_DEFAULT"
+    fi
+
+    if [ -n "$CODE_PATH" ]; then
+        if [ ! -d "$CODE_PATH" ]; then
+            echo "Error: code path '${CODE_PATH}' does not exist or is not a directory"
+            exit 1
+        fi
+        if [ ! -f "${CODE_PATH}/__init__.py" ]; then
+            echo "Warning: '${CODE_PATH}' does not look like a pantheon python package (no __init__.py)"
+        fi
+        CODE_PATH_ABS="$(cd "${CODE_PATH}" && pwd)"
+        VOLUME_ARGS+=(-v "${CODE_PATH_ABS}:/app/pantheon")
+        echo "  Mounting framework code: ${CODE_PATH_ABS} → /app/pantheon (overrides image)"
+    fi
 fi
 
 # Per-user data mounts

@@ -105,6 +105,14 @@ docker logs -f pantheon-caddy
 ./scripts/add-user.sh alice --data /home/alice/scrnaseq-data
 ./scripts/add-user.sh alice --data /data/refs:/workspace/data/refs
 ./scripts/add-user.sh alice --image pantheon-agents-r:latest
+
+# By default, user containers run with the pantheon framework code from
+# this checkout (../../pantheon/), not the code bundled in the image.
+# To use the image's bundled code instead:
+./scripts/add-user.sh alice --no-code
+
+# Or point at a different checkout:
+./scripts/add-user.sh alice --code /elsewhere/PantheonOS/pantheon
 ```
 
 Behavior:

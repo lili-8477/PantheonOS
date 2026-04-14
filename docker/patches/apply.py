@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Apply all Pantheon patches. Run once before starting Pantheon.
+"""Apply Pantheon workspace patches. Run once before starting Pantheon.
 
-Usage: python /workspace/.pantheon/patches/apply.py
-
-This script patches source files in /app/pantheon/ to add features
-that aren't in the base image. It's idempotent — safe to run multiple times.
+Only patches features NOT yet in the source code.
+Features now in source: include_tools, deferred_tools, disable_background,
+micro-compaction, tool result storage, post-compact skill re-injection.
 """
-import re
 
 MARKER = "# PANTHEON_WORKSPACE_PATCH"
 
@@ -22,7 +20,7 @@ def patch_file(path, marker_id, find, replace):
         return False
 
     if find not in content:
-        print(f"  [WARN] {marker_id} — pattern not found in {path}")
+        print(f"  [skip] {marker_id} (pattern not found — likely already in source)")
         return False
 
     content = content.replace(find, f"{replace}  {full_marker}\n", 1)
@@ -35,7 +33,7 @@ def patch_file(path, marker_id, find, replace):
 def main():
     print("Applying Pantheon workspace patches...")
 
-    # ── 1. get_token_stats on ChatRoom ──
+    # ── 1. get_token_stats on ChatRoom (not yet in source) ──
     patch_file(
         "/app/pantheon/chatroom/room.py",
         "get_token_stats",
@@ -60,14 +58,6 @@ def main():
     @tool
     async def get_agents(""",
     )
-
-    # ── 2-5. include_tools & deferred_tools ──
-    # NOTE: These features are now built into the source code.
-    # Patches 2-5 (include_tools on AgentConfig, ToolSetProvider filter,
-    # factory wiring, template_io) are no longer needed.
-    # The source now includes both include_tools and deferred_tools support
-    # natively in: models.py, providers.py, factory/__init__.py, template_io.py
-    print("  [skip] include_tools patches (now in source code)")
 
     print("Done.")
 
